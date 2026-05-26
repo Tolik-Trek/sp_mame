@@ -281,18 +281,22 @@ void sdl_window_info::update_cursor_state()
 	c=SDL_CreateCursor(data, data, 8, 8, 0, 0);
 	SDL_SetCursor(c);
 #else
+	auto &sdlosd = downcast<sdl_osd_interface&>(machine().osd());
+
+	// if the pointer was freed to the OS, re-capture when the user clicks back in
+	// the window - do this even with the debugger enabled, otherwise the pointer
+	// (and all input, since polling is suspended while released) gets stuck with no
+	// way to recover: the recapture combo can't re-fire because the keyboard isn't
+	// polled, so the click is the only escape hatch
+	if (sdlosd.pointer_released()
+			&& (SDL_GetMouseFocus() == platform_window())
+			&& (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_LEFT)))
+		sdlosd.recapture_pointer();
+
 	// do not do mouse capture if the debugger's enabled to avoid
 	// the possibility of losing control
 	if (!(machine().debug_flags & DEBUG_FLAG_OSD_ENABLED))
 	{
-		auto &sdlosd = downcast<sdl_osd_interface&>(machine().osd());
-
-		// if the pointer was freed to the OS, re-capture when the user clicks back in the window
-		if (sdlosd.pointer_released()
-				&& (SDL_GetMouseFocus() == platform_window())
-				&& (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_LEFT)))
-			sdlosd.recapture_pointer();
-
 		bool should_hide_mouse = sdlosd.should_hide_mouse();
 
 		if (!fullscreen() && !should_hide_mouse)
