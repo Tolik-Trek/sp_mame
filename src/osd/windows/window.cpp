@@ -752,6 +752,12 @@ void winwindow_update_cursor_state(running_machine &machine)
 
 	auto &window = static_cast<win_window_info &>(*osd_common_t::window_list().front());
 
+	// if the pointer was freed to the OS, re-capture when the user clicks back in the window
+	if (WINOSD(machine)->pointer_released()
+			&& winwindow_has_focus()
+			&& (GetAsyncKeyState(VK_LBUTTON) & 0x8000))
+		WINOSD(machine)->recapture_pointer();
+
 	// if we should hide the mouse cursor, then do it
 	// rules are:
 	//   1. we must have focus before hiding the cursor

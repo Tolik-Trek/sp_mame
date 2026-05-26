@@ -8,6 +8,8 @@
 
 #import "debugview.h"
 
+#import <CoreText/CoreText.h>
+
 #include "emu.h"
 #include "debugger.h"
 #include "debug/debugcon.h"
@@ -18,6 +20,7 @@
 #include "util/xmlfile.h"
 
 #include <cstring>
+#include <vector>
 
 
 static NSColor *DefaultForeground;
@@ -353,6 +356,15 @@ static void debugwin_view_update(debug_view &view, void *osdprivate)
 	fontWidth = [font maximumAdvancement].width;
 	fontHeight = ceil([font ascender] - [font descender]);
 	fontAscent = [font ascender];
+
+	// precompute the glyph for every byte value once, for the Core Text fast path in drawRect
+	{
+		UniChar chars[256];
+		for (int i = 0; i < 256; i++)
+			chars[i] = (UniChar)i;
+		CTFontGetGlyphsForCharacters((__bridge CTFontRef)font, chars, glyphCache, 256);
+	}
+
 	[[self enclosingScrollView] setLineScroll:fontHeight];
 	totalWidth = totalHeight = 0;
 	[self update];
@@ -687,87 +699,77 @@ static void debugwin_view_update(debug_view &view, void *osdprivate)
 	debug_view_char const *data = view->viewdata();
 	if (!data)
 		return;
-
-	// clear any space above the available content
 	data += ((row - origin.y) * size.x);
-	if (dirtyRect.origin.y < (row * fontHeight))
-	{
-		[DefaultBackground set];
-		[NSBezierPath fillRect:NSMakeRect(0,
-										  dirtyRect.origin.y,
-										  [self bounds].size.width,
-										  (row * fontHeight) - dirtyRect.origin.y)];
-	}
 
-	// render entire lines to get character alignment right
-	for ( ; row < clip; row++, data += size.x)
+	// the view is opaque: clear the whole dirty area to the default background first
+	[DefaultBackground set];
+	NSRectFill(dirtyRect);
+
+	int32_t const rowStart = row;
+	debug_view_char const *const dataStart = data;
+	CGFloat const pad = [textContainer lineFragmentPadding];
+
+	// pass 1: backgrounds, in the view's normal (flipped) coordinates
+	data = dataStart;
+	for (int32_t r = rowStart; r < clip; r++, data += size.x)
 	{
-		int         attr = -1;
-		NSUInteger  start = 0, length = 0;
-		for (uint32_t col = origin.x; col < origin.x + size.x; col++)
+		CGFloat const ytop = r * fontHeight;
+		for (int32_t col = 0; col < size.x; )
 		{
-			[[text mutableString] appendFormat:@"%C", unichar(data[col - origin.x].byte)];
-			if ((start < length) && (attr != data[col - origin.x].attrib))
+			uint8_t const attr = data[col].attrib;
+			int32_t const start = col;
+			while ((col < size.x) && (data[col].attrib == attr))
+				col++;
+			NSColor *const bg = [self backgroundForAttribute:attr];
+			if (bg != DefaultBackground)  // default already cleared above
 			{
-				NSRange const run = NSMakeRange(start, length - start);
-				[text addAttribute:NSFontAttributeName
-							 value:font
-							 range:NSMakeRange(0, length)];
-				[text addAttribute:NSForegroundColorAttributeName
-							 value:[self foregroundForAttribute:attr]
-							 range:run];
-				NSRange const glyphs = [layoutManager glyphRangeForCharacterRange:run
-															 actualCharacterRange:NULL];
-				NSRect box = [layoutManager boundingRectForGlyphRange:glyphs
-													  inTextContainer:textContainer];
-				if (start == 0)
-				{
-					box.size.width += box.origin.x;
-					box.origin.x = 0;
-				}
-				[[self backgroundForAttribute:attr] set];
-				[NSBezierPath fillRect:NSMakeRect(box.origin.x,
-												  row * fontHeight,
-												  box.size.width,
-												  fontHeight)];
-				start = length;
+				[bg set];
+				NSRectFill(NSMakeRect(pad + ((origin.x + start) * fontWidth),
+									  ytop,
+									  (col - start) * fontWidth,
+									  fontHeight));
 			}
-			attr = data[col - origin.x].attrib;
-			length = [text length];
 		}
-		NSRange const run = NSMakeRange(start, length - start);
-		[text addAttribute:NSFontAttributeName
-					 value:font
-					 range:NSMakeRange(0, length)];
-		[text addAttribute:NSForegroundColorAttributeName
-					 value:[self foregroundForAttribute:attr]
-					 range:run];
-		NSRange const glyphs = [layoutManager glyphRangeForCharacterRange:run
-													 actualCharacterRange:NULL];
-		NSRect box = [layoutManager boundingRectForGlyphRange:glyphs
-											  inTextContainer:textContainer];
-		if (start == 0)
-			box.origin.x = 0;
-		box.size.width = std::max([self bounds].size.width - box.origin.x, CGFloat(0));
-		[[self backgroundForAttribute:attr] set];
-		[NSBezierPath fillRect:NSMakeRect(box.origin.x,
-										  row * fontHeight,
-										  box.size.width,
-										  fontHeight)];
-		[layoutManager drawGlyphsForGlyphRange:[layoutManager glyphRangeForTextContainer:textContainer]
-									   atPoint:NSMakePoint(0, row * fontHeight)];
-		[text deleteCharactersInRange:NSMakeRange(0, length)];
 	}
 
-	// clear any space below the available content
-	if ((dirtyRect.origin.y + dirtyRect.size.height) > (row * fontHeight))
+	// pass 2: glyphs, drawn directly on the fixed monospaced grid with Core Text
+	// (no NSLayoutManager — the old per-row layout pass was O(rows*cols) and took
+	// >1s on large memory views, freezing the emulation on the shared main thread).
+	// Convert the flipped view to a y-up coordinate space so glyphs render upright.
+	CGContextRef const ctx = [[NSGraphicsContext currentContext] CGContext];
+	CTFontRef const ctFont = (__bridge CTFontRef)font;
+	CGFloat const boundsH = [self bounds].size.height;
+	std::vector<CGGlyph> glyphs(std::max<int32_t>(size.x, 1));
+	std::vector<CGPoint> positions(std::max<int32_t>(size.x, 1));
+
+	CGContextSaveGState(ctx);
+	CGContextTranslateCTM(ctx, 0.0, boundsH);
+	CGContextScaleCTM(ctx, 1.0, -1.0);
+	CGContextSetTextMatrix(ctx, CGAffineTransformIdentity);
+
+	data = dataStart;
+	for (int32_t r = rowStart; r < clip; r++, data += size.x)
 	{
-		[DefaultBackground set];
-		[NSBezierPath fillRect:NSMakeRect(0,
-										  row * fontHeight,
-										  [self bounds].size.width,
-										  (dirtyRect.origin.y + dirtyRect.size.height) - (row * fontHeight))];
+		CGFloat const baseline = boundsH - ((r * fontHeight) + fontAscent);
+		for (int32_t col = 0; col < size.x; )
+		{
+			uint8_t const attr = data[col].attrib;
+			int32_t const start = col;
+			while ((col < size.x) && (data[col].attrib == attr))
+				col++;
+			int32_t const len = col - start;
+			CGFloat const x0 = pad + ((origin.x + start) * fontWidth);
+			for (int32_t k = 0; k < len; k++)
+			{
+				glyphs[k] = glyphCache[data[start + k].byte];
+				positions[k] = CGPointMake(x0 + (k * fontWidth), baseline);
+			}
+			[[self foregroundForAttribute:attr] set];
+			CTFontDrawGlyphs(ctFont, &glyphs[0], &positions[0], len, ctx);
+		}
 	}
+
+	CGContextRestoreGState(ctx);
 }
 
 

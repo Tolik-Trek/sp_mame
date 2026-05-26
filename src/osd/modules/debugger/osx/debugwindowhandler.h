@@ -14,7 +14,7 @@
 
 
 @protocol MAMEDebugViewExpressionSupport;
-@class MAMEDebugCommandHistory, MAMEDebugConsole;
+@class MAMEDebugCommandHistory, MAMEDebugConsole, MAMEDebugKeyMap;
 
 
 extern NSString *const MAMEHideDebuggerNotification;
@@ -35,6 +35,9 @@ extern NSString *const MAMESaveDebuggerConfigurationNotification;
 - (id)initWithMachine:(running_machine &)m title:(NSString *)t;
 
 - (void)activate;
+
+- (IBAction)showKeyBindings:(id)sender;
+- (void)keyMapChanged:(NSNotification *)notification;
 
 - (IBAction)debugBreak:(id)sender;
 - (IBAction)debugRun:(id)sender;

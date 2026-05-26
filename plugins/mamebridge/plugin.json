@@ -1,0 +1,10 @@
+{
+  "plugin": {
+    "name": "mamebridge",
+    "description": "File-IPC debugger bridge for the MAME MCP server",
+    "version": "0.0.1",
+    "author": "Tolik",
+    "type": "plugin",
+    "start": "false"
+  }
+}

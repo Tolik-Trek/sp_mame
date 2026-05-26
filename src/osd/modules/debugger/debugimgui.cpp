@@ -28,9 +28,125 @@
 #include "modules/osdmodule.h"
 #include "zippath.h"
 
+#include "debugkeyconfig.h"
+
+#include "util/xmlfile.h"
+
 namespace osd {
 
 namespace {
+
+//-------------------------------------------------
+//  key name <-> ImGuiKey mapping for shortcuts
+//-------------------------------------------------
+
+struct imgui_key_name
+{
+	char const  *name;
+	ImGuiKey    key;
+};
+
+imgui_key_name const f_imgui_keys[] = {
+	{ "F1", ImGuiKey_F1 }, { "F2", ImGuiKey_F2 }, { "F3", ImGuiKey_F3 }, { "F4", ImGuiKey_F4 },
+	{ "F5", ImGuiKey_F5 }, { "F6", ImGuiKey_F6 }, { "F7", ImGuiKey_F7 }, { "F8", ImGuiKey_F8 },
+	{ "F9", ImGuiKey_F9 }, { "F10", ImGuiKey_F10 }, { "F11", ImGuiKey_F11 }, { "F12", ImGuiKey_F12 },
+	{ "A", ImGuiKey_A }, { "B", ImGuiKey_B }, { "C", ImGuiKey_C }, { "D", ImGuiKey_D },
+	{ "E", ImGuiKey_E }, { "F", ImGuiKey_F }, { "G", ImGuiKey_G }, { "H", ImGuiKey_H },
+	{ "I", ImGuiKey_I }, { "J", ImGuiKey_J }, { "K", ImGuiKey_K }, { "L", ImGuiKey_L },
+	{ "M", ImGuiKey_M }, { "N", ImGuiKey_N }, { "O", ImGuiKey_O }, { "P", ImGuiKey_P },
+	{ "Q", ImGuiKey_Q }, { "R", ImGuiKey_R }, { "S", ImGuiKey_S }, { "T", ImGuiKey_T },
+	{ "U", ImGuiKey_U }, { "V", ImGuiKey_V }, { "W", ImGuiKey_W }, { "X", ImGuiKey_X },
+	{ "Y", ImGuiKey_Y }, { "Z", ImGuiKey_Z },
+	{ "0", ImGuiKey_0 }, { "1", ImGuiKey_1 }, { "2", ImGuiKey_2 }, { "3", ImGuiKey_3 },
+	{ "4", ImGuiKey_4 }, { "5", ImGuiKey_5 }, { "6", ImGuiKey_6 }, { "7", ImGuiKey_7 },
+	{ "8", ImGuiKey_8 }, { "9", ImGuiKey_9 },
+	{ "Up", ImGuiKey_UpArrow }, { "Down", ImGuiKey_DownArrow },
+	{ "Left", ImGuiKey_LeftArrow }, { "Right", ImGuiKey_RightArrow },
+	{ "Home", ImGuiKey_Home }, { "End", ImGuiKey_End },
+	{ "PageUp", ImGuiKey_PageUp }, { "PageDown", ImGuiKey_PageDown },
+	{ "Insert", ImGuiKey_Insert }, { "Delete", ImGuiKey_Delete },
+	{ "Space", ImGuiKey_Space }, { "Enter", ImGuiKey_Enter }, { "Tab", ImGuiKey_Tab }
+};
+
+ImGuiKey imgui_key_for_name(std::string const &name)
+{
+	for (imgui_key_name const &entry : f_imgui_keys)
+		if (name == entry.name)
+			return entry.key;
+	return ImGuiKey_None;
+}
+
+bool shortcut_pressed(osd::debugger::key_shortcut const &sc)
+{
+	if (sc.empty())
+		return false;
+	ImGuiKey const key = imgui_key_for_name(sc.key);
+	if (key == ImGuiKey_None)
+		return false;
+	ImGuiIO const &io = ImGui::GetIO();
+	if ((sc.ctrl != io.KeyCtrl) || (sc.shift != io.KeyShift) || (sc.alt != io.KeyAlt))
+		return false;
+	return ImGui::IsKeyPressed(key, false);
+}
+
+// detect a freshly pressed shortcut for the bindings recorder (returns whether one was captured)
+bool capture_shortcut(osd::debugger::key_shortcut &out)
+{
+	ImGuiIO const &io = ImGui::GetIO();
+	for (imgui_key_name const &entry : f_imgui_keys)
+	{
+		if (ImGui::IsKeyPressed(entry.key, false))
+		{
+			out.key = entry.name;
+			out.ctrl = io.KeyCtrl;
+			out.shift = io.KeyShift;
+			out.alt = io.KeyAlt;
+			return true;
+		}
+	}
+	return false;
+}
+
+// action identifiers (also used as keys in the configuration file)
+char const *const IMGUI_ACT_NEW_DISASM   = "new_disasm";
+char const *const IMGUI_ACT_NEW_MEMORY   = "new_memory";
+char const *const IMGUI_ACT_NEW_BPOINTS  = "new_bpoints";
+char const *const IMGUI_ACT_NEW_WPOINTS  = "new_wpoints";
+char const *const IMGUI_ACT_NEW_LOG      = "new_log";
+char const *const IMGUI_ACT_RUN          = "run";
+char const *const IMGUI_ACT_RUN_NEXT_CPU = "run_next_cpu";
+char const *const IMGUI_ACT_RUN_NEXT_INT = "run_next_int";
+char const *const IMGUI_ACT_RUN_VBLANK   = "run_vblank";
+char const *const IMGUI_ACT_RUN_AND_HIDE = "run_and_hide";
+char const *const IMGUI_ACT_STEP_INTO    = "step_into";
+char const *const IMGUI_ACT_STEP_OVER    = "step_over";
+char const *const IMGUI_ACT_STEP_OUT     = "step_out";
+char const *const IMGUI_ACT_SOFT_RESET   = "soft_reset";
+char const *const IMGUI_ACT_HARD_RESET   = "hard_reset";
+
+std::vector<osd::debugger::key_action> imgui_default_actions()
+{
+	using osd::debugger::key_shortcut;
+	auto const sc = [] (char const *key, bool ctrl, bool shift) -> key_shortcut
+			{ key_shortcut s; s.key = key; s.ctrl = ctrl; s.shift = shift; return s; };
+	return {
+		{ IMGUI_ACT_NEW_DISASM,   "New Disassembly Window",      "Windows",   sc("D", true,  false) },
+		{ IMGUI_ACT_NEW_MEMORY,   "New Memory Window",           "Windows",   sc("M", true,  false) },
+		{ IMGUI_ACT_NEW_BPOINTS,  "New Breakpoints Window",      "Windows",   sc("B", true,  false) },
+		{ IMGUI_ACT_NEW_WPOINTS,  "New Watchpoints Window",      "Windows",   sc("W", true,  false) },
+		{ IMGUI_ACT_NEW_LOG,      "New Log Window",              "Windows",   sc("L", true,  false) },
+		{ IMGUI_ACT_RUN,          "Run",                         "Execution", sc("F5",  false, false) },
+		{ IMGUI_ACT_RUN_NEXT_CPU, "Go to Next CPU",              "Execution", sc("F6",  false, false) },
+		{ IMGUI_ACT_RUN_NEXT_INT, "Run until Next Interrupt",    "Execution", sc("F7",  false, false) },
+		{ IMGUI_ACT_RUN_VBLANK,   "Run until Next VBLANK",       "Execution", sc("F8",  false, false) },
+		{ IMGUI_ACT_RUN_AND_HIDE, "Run and Hide Debugger",       "Execution", sc("F12", false, false) },
+		{ IMGUI_ACT_STEP_INTO,    "Single Step",                 "Execution", sc("F11", false, false) },
+		{ IMGUI_ACT_STEP_OVER,    "Step Over",                   "Execution", sc("F10", false, false) },
+		{ IMGUI_ACT_STEP_OUT,     "Step Out",                    "Execution", sc("F9",  false, false) },
+		{ IMGUI_ACT_SOFT_RESET,   "Soft Reset",                  "Execution", sc("F3",  false, false) },
+		{ IMGUI_ACT_HARD_RESET,   "Hard Reset",                  "Execution", sc("F3",  false, true)  }
+	};
+}
 
 class debug_area
 {
@@ -123,7 +239,9 @@ public:
 		m_create_open(false),
 		m_create_confirm_wait(false),
 		m_selected_file(nullptr),
-		m_format_sel(0)
+		m_format_sel(0),
+		m_keymap(imgui_default_actions()),
+		m_keybind_open(false)
 	{
 	}
 
@@ -177,6 +295,9 @@ private:
 	void draw_view(debug_area* view_ptr, bool exp_change);
 	void draw_mount_dialog(const char* label);
 	void draw_create_dialog(const char* label);
+	void draw_keybindings();
+	void config_load(config_type cfgtype, config_level cfglevel, util::xml::data_node const *parentnode);
+	void config_save(config_type cfgtype, util::xml::data_node *parentnode);
 	void mount_image();
 	void create_image();
 	void refresh_filelist();
@@ -212,6 +333,10 @@ private:
 	int              m_format_sel;
 	char             m_path[1024];  // path text field buffer
 	std::unordered_map<input_item_id,ImGuiKey> m_mapping;
+	osd::debugger::keymap_config m_keymap;       // remappable keyboard shortcuts
+	bool             m_keybind_open;             // true while the key bindings window is open
+	std::string      m_keybind_recording;        // id of the action currently being recorded ("" == none)
+	std::string      m_keybind_status;           // status line for the key bindings window
 };
 
 // globals
@@ -361,56 +486,57 @@ void debug_imgui::handle_events()
 		}
 	}
 
-	// global keys
-	if(ImGui::IsKeyPressed(ImGuiKey_F3,false))
-	{
-		if(ImGui::IsKeyDown(ImGuiKey_LeftShift))
-			m_machine->schedule_hard_reset();
-		else
-		{
-			m_machine->schedule_soft_reset();
-			m_machine->debugger().console().get_visible_cpu()->debug()->go();
-		}
-	}
+	// don't fire global shortcuts while recording a new key binding
+	if(!m_keybind_recording.empty())
+		return;
 
-	if(ImGui::IsKeyPressed(ImGuiKey_F5,false))
+	// global keys (remappable - see m_keymap)
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_SOFT_RESET)))
+	{
+		m_machine->schedule_soft_reset();
+		m_machine->debugger().console().get_visible_cpu()->debug()->go();
+	}
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_HARD_RESET)))
+		m_machine->schedule_hard_reset();
+
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_RUN)))
 	{
 		m_machine->debugger().console().get_visible_cpu()->debug()->go();
 		m_running = true;
 	}
-	if(ImGui::IsKeyPressed(ImGuiKey_F6,false))
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_RUN_NEXT_CPU)))
 	{
 		m_machine->debugger().console().get_visible_cpu()->debug()->go_next_device();
 		m_running = true;
 	}
-	if(ImGui::IsKeyPressed(ImGuiKey_F7,false))
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_RUN_NEXT_INT)))
 	{
 		m_machine->debugger().console().get_visible_cpu()->debug()->go_interrupt();
 		m_running = true;
 	}
-	if(ImGui::IsKeyPressed(ImGuiKey_F8,false))
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_RUN_VBLANK)))
 		m_machine->debugger().console().get_visible_cpu()->debug()->go_vblank();
-	if(ImGui::IsKeyPressed(ImGuiKey_F9,false))
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_STEP_OUT)))
 		m_machine->debugger().console().get_visible_cpu()->debug()->single_step_out();
-	if(ImGui::IsKeyPressed(ImGuiKey_F10,false))
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_STEP_OVER)))
 		m_machine->debugger().console().get_visible_cpu()->debug()->single_step_over();
-	if(ImGui::IsKeyPressed(ImGuiKey_F11,false))
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_STEP_INTO)))
 		m_machine->debugger().console().get_visible_cpu()->debug()->single_step();
-	if(ImGui::IsKeyPressed(ImGuiKey_F12,false))
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_RUN_AND_HIDE)))
 	{
 		m_machine->debugger().console().get_visible_cpu()->debug()->go();
 		m_hide = true;
 	}
 
-	if(ImGui::IsKeyPressed(ImGuiKey_D,false) && io.KeyCtrl)
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_NEW_DISASM)))
 		add_disasm(++m_win_count);
-	if(ImGui::IsKeyPressed(ImGuiKey_M,false) && io.KeyCtrl)
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_NEW_MEMORY)))
 		add_memory(++m_win_count);
-	if(ImGui::IsKeyPressed(ImGuiKey_B,false) && io.KeyCtrl)
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_NEW_BPOINTS)))
 		add_bpoints(++m_win_count);
-	if(ImGui::IsKeyPressed(ImGuiKey_W,false) && io.KeyCtrl)
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_NEW_WPOINTS)))
 		add_wpoints(++m_win_count);
-	if(ImGui::IsKeyPressed(ImGuiKey_L,false) && io.KeyCtrl)
+	if(shortcut_pressed(m_keymap.shortcut(IMGUI_ACT_NEW_LOG)))
 		add_log(++m_win_count);
 
 }
@@ -1312,46 +1438,64 @@ void debug_imgui::draw_console()
 			if(ImGui::BeginMenu("Debug"))
 			{
 				show_menu = true;
-				if(ImGui::MenuItem("New disassembly window", "Ctrl+D"))
+				// shortcut labels reflect the (remappable) key bindings in m_keymap
+				std::string const sc_disasm   = m_keymap.shortcut(IMGUI_ACT_NEW_DISASM).to_string();
+				std::string const sc_memory   = m_keymap.shortcut(IMGUI_ACT_NEW_MEMORY).to_string();
+				std::string const sc_bpoints  = m_keymap.shortcut(IMGUI_ACT_NEW_BPOINTS).to_string();
+				std::string const sc_wpoints  = m_keymap.shortcut(IMGUI_ACT_NEW_WPOINTS).to_string();
+				std::string const sc_log      = m_keymap.shortcut(IMGUI_ACT_NEW_LOG).to_string();
+				std::string const sc_run      = m_keymap.shortcut(IMGUI_ACT_RUN).to_string();
+				std::string const sc_nextcpu  = m_keymap.shortcut(IMGUI_ACT_RUN_NEXT_CPU).to_string();
+				std::string const sc_nextint  = m_keymap.shortcut(IMGUI_ACT_RUN_NEXT_INT).to_string();
+				std::string const sc_vblank   = m_keymap.shortcut(IMGUI_ACT_RUN_VBLANK).to_string();
+				std::string const sc_hide     = m_keymap.shortcut(IMGUI_ACT_RUN_AND_HIDE).to_string();
+				std::string const sc_into     = m_keymap.shortcut(IMGUI_ACT_STEP_INTO).to_string();
+				std::string const sc_over     = m_keymap.shortcut(IMGUI_ACT_STEP_OVER).to_string();
+				std::string const sc_out      = m_keymap.shortcut(IMGUI_ACT_STEP_OUT).to_string();
+				if(ImGui::MenuItem("New disassembly window", sc_disasm.c_str()))
 					add_disasm(++m_win_count);
-				if(ImGui::MenuItem("New memory window", "Ctrl+M"))
+				if(ImGui::MenuItem("New memory window", sc_memory.c_str()))
 					add_memory(++m_win_count);
-				if(ImGui::MenuItem("New breakpoints window", "Ctrl+B"))
+				if(ImGui::MenuItem("New breakpoints window", sc_bpoints.c_str()))
 					add_bpoints(++m_win_count);
-				if(ImGui::MenuItem("New watchpoints window", "Ctrl+W"))
+				if(ImGui::MenuItem("New watchpoints window", sc_wpoints.c_str()))
 					add_wpoints(++m_win_count);
-				if(ImGui::MenuItem("New log window", "Ctrl+L"))
+				if(ImGui::MenuItem("New log window", sc_log.c_str()))
 					add_log(++m_win_count);
 				ImGui::Separator();
-				if(ImGui::MenuItem("Run", "F5"))
+				if(ImGui::MenuItem("Run", sc_run.c_str()))
 				{
 					m_machine->debugger().console().get_visible_cpu()->debug()->go();
 					m_running = true;
 				}
-				if(ImGui::MenuItem("Go to next CPU", "F6"))
+				if(ImGui::MenuItem("Go to next CPU", sc_nextcpu.c_str()))
 				{
 					m_machine->debugger().console().get_visible_cpu()->debug()->go_next_device();
 					m_running = true;
 				}
-				if(ImGui::MenuItem("Run until next interrupt", "F7"))
+				if(ImGui::MenuItem("Run until next interrupt", sc_nextint.c_str()))
 				{
 					m_machine->debugger().console().get_visible_cpu()->debug()->go_interrupt();
 					m_running = true;
 				}
-				if(ImGui::MenuItem("Run until VBLANK", "F8"))
+				if(ImGui::MenuItem("Run until VBLANK", sc_vblank.c_str()))
 					m_machine->debugger().console().get_visible_cpu()->debug()->go_vblank();
-				if(ImGui::MenuItem("Run and hide debugger", "F12"))
+				if(ImGui::MenuItem("Run and hide debugger", sc_hide.c_str()))
 				{
 					m_machine->debugger().console().get_visible_cpu()->debug()->go();
 					m_hide = true;
 				}
 				ImGui::Separator();
-				if(ImGui::MenuItem("Single step", "F11"))
+				if(ImGui::MenuItem("Single step", sc_into.c_str()))
 					m_machine->debugger().console().get_visible_cpu()->debug()->single_step();
-				if(ImGui::MenuItem("Step over", "F10"))
+				if(ImGui::MenuItem("Step over", sc_over.c_str()))
 					m_machine->debugger().console().get_visible_cpu()->debug()->single_step_over();
-				if(ImGui::MenuItem("Step out", "F9"))
+				if(ImGui::MenuItem("Step out", sc_out.c_str()))
 					m_machine->debugger().console().get_visible_cpu()->debug()->single_step_out();
+
+				ImGui::Separator();
+				if(ImGui::MenuItem("Customize keys..."))
+					m_keybind_open = true;
 
 				ImGui::EndMenu();
 			}
@@ -1448,6 +1592,8 @@ void debug_imgui::update()
 	ImGui::PushStyleColor(ImGuiCol_Border,ImVec4(0.7f,0.7f,0.7f,0.8f));
 	m_text_size = ImGui::CalcTextSize("A");  // hopefully you're using a monospaced font...
 	draw_console();  // We'll always have a console window
+	if(m_keybind_open)
+		draw_keybindings();
 
 	view_ptr = view_list.begin();
 	while(view_ptr != view_list.end())
@@ -1489,6 +1635,126 @@ void debug_imgui::update()
 	ImGui::PopStyleColor(12);
 }
 
+void debug_imgui::config_load(config_type cfgtype, config_level cfglevel, util::xml::data_node const *parentnode)
+{
+	// keyboard shortcuts are global - they live in default.cfg
+	if((config_type::DEFAULT == cfgtype) && parentnode)
+		m_keymap.load(*parentnode);
+}
+
+void debug_imgui::config_save(config_type cfgtype, util::xml::data_node *parentnode)
+{
+	if((config_type::DEFAULT == cfgtype) && parentnode)
+		m_keymap.save(*parentnode);
+}
+
+void debug_imgui::draw_keybindings()
+{
+	ImGui::SetNextWindowSize(ImVec2(480, 430), ImGuiCond_Once);
+	bool open = true;
+	if(ImGui::Begin("Customize Keys", &open))
+	{
+		ImGui::TextWrapped("Click a shortcut to record a new key combination. "
+				"While recording: Esc cancels, Delete/Backspace clears the binding.");
+		ImGui::Separator();
+
+		// while recording, watch for a key combination (or cancel/clear keys)
+		if(!m_keybind_recording.empty())
+		{
+			if(ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+			{
+				m_keybind_recording.clear();
+				m_keybind_status = "Recording cancelled.";
+			}
+			else if(ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_Delete, false))
+			{
+				m_keymap.clear(m_keybind_recording);
+				m_keybind_status = "Cleared shortcut.";
+				m_keybind_recording.clear();
+			}
+			else
+			{
+				osd::debugger::key_shortcut sc;
+				if(capture_shortcut(sc))
+				{
+					std::string const conflict = m_keymap.conflicting_action(sc, m_keybind_recording);
+					if(!conflict.empty())
+					{
+						m_keybind_status = "\"" + sc.to_string() + "\" is already used - try another.";
+					}
+					else
+					{
+						m_keymap.set_shortcut(m_keybind_recording, sc);
+						m_keybind_status = "Set " + sc.to_string() + ".";
+						m_keybind_recording.clear();
+					}
+				}
+			}
+		}
+
+		ImVec2 const tableSize(0, -ImGui::GetFrameHeightWithSpacing() - ImGui::GetTextLineHeightWithSpacing());
+		if(ImGui::BeginTable("##keybinds", 3,
+				ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, tableSize))
+		{
+			ImGui::TableSetupColumn("Action");
+			ImGui::TableSetupColumn("Group");
+			ImGui::TableSetupColumn("Shortcut");
+			ImGui::TableSetupScrollFreeze(0, 1);
+			ImGui::TableHeadersRow();
+			for(osd::debugger::key_action const &action : m_keymap.actions())
+			{
+				ImGui::TableNextRow();
+				ImGui::TableNextColumn();
+				ImGui::TextUnformatted(action.label.c_str());
+				ImGui::TableNextColumn();
+				ImGui::TextUnformatted(action.group.c_str());
+				ImGui::TableNextColumn();
+				bool const recording = (m_keybind_recording == action.id);
+				std::string label;
+				if(recording)
+				{
+					label = "[press keys]";
+				}
+				else
+				{
+					label = m_keymap.shortcut(action.id).to_string();
+					if(label.empty())
+						label = "(none)";
+				}
+				label += "###";  // unique button id per action
+				label += action.id;
+				if(ImGui::SmallButton(label.c_str()))
+				{
+					m_keybind_recording = action.id;
+					m_keybind_status = "Recording shortcut for " + action.label + "...";
+				}
+			}
+			ImGui::EndTable();
+		}
+
+		ImGui::Separator();
+		if(ImGui::Button("Reset All to Defaults"))
+		{
+			m_keymap.reset_all();
+			m_keybind_recording.clear();
+			m_keybind_status = "All shortcuts reset to defaults.";
+		}
+		ImGui::SameLine();
+		if(ImGui::Button("Close"))
+			open = false;
+		if(!m_keybind_status.empty())
+			ImGui::TextDisabled("%s", m_keybind_status.c_str());
+	}
+	ImGui::End();
+
+	if(!open)
+	{
+		m_keybind_open = false;
+		m_keybind_recording.clear();
+		m_keybind_status.clear();
+	}
+}
+
 void debug_imgui::init_debugger(running_machine &machine)
 {
 	ImGuiIO& io = ImGui::GetIO();
@@ -1501,6 +1767,12 @@ void debug_imgui::init_debugger(running_machine &machine)
 	image_interface_enumerator iter(m_machine->root_device());
 	if (iter.first() != nullptr)
 		m_has_images = true;
+
+	// register for configuration load/save so key bindings persist
+	machine.configuration().config_register(
+			"debugger",
+			configuration_manager::load_delegate(&debug_imgui::config_load, this),
+			configuration_manager::save_delegate(&debug_imgui::config_save, this));
 
 	// map keys to ImGui inputs
 	m_mapping[ITEM_ID_A] = ImGuiKey_A;
@@ -1536,6 +1808,37 @@ void debug_imgui::init_debugger(running_machine &machine)
 	m_mapping[ITEM_ID_F10] = ImGuiKey_F10;
 	m_mapping[ITEM_ID_F11] = ImGuiKey_F11;
 	m_mapping[ITEM_ID_F12] = ImGuiKey_F12;
+	// remaining keys so any shortcut can be bound/detected (see f_imgui_keys)
+	m_mapping[ITEM_ID_F1] = ImGuiKey_F1;
+	m_mapping[ITEM_ID_F2] = ImGuiKey_F2;
+	m_mapping[ITEM_ID_F4] = ImGuiKey_F4;
+	m_mapping[ITEM_ID_E] = ImGuiKey_E;
+	m_mapping[ITEM_ID_F] = ImGuiKey_F;
+	m_mapping[ITEM_ID_G] = ImGuiKey_G;
+	m_mapping[ITEM_ID_H] = ImGuiKey_H;
+	m_mapping[ITEM_ID_I] = ImGuiKey_I;
+	m_mapping[ITEM_ID_J] = ImGuiKey_J;
+	m_mapping[ITEM_ID_K] = ImGuiKey_K;
+	m_mapping[ITEM_ID_N] = ImGuiKey_N;
+	m_mapping[ITEM_ID_O] = ImGuiKey_O;
+	m_mapping[ITEM_ID_P] = ImGuiKey_P;
+	m_mapping[ITEM_ID_Q] = ImGuiKey_Q;
+	m_mapping[ITEM_ID_R] = ImGuiKey_R;
+	m_mapping[ITEM_ID_S] = ImGuiKey_S;
+	m_mapping[ITEM_ID_T] = ImGuiKey_T;
+	m_mapping[ITEM_ID_U] = ImGuiKey_U;
+	m_mapping[ITEM_ID_0] = ImGuiKey_0;
+	m_mapping[ITEM_ID_1] = ImGuiKey_1;
+	m_mapping[ITEM_ID_2] = ImGuiKey_2;
+	m_mapping[ITEM_ID_3] = ImGuiKey_3;
+	m_mapping[ITEM_ID_4] = ImGuiKey_4;
+	m_mapping[ITEM_ID_5] = ImGuiKey_5;
+	m_mapping[ITEM_ID_6] = ImGuiKey_6;
+	m_mapping[ITEM_ID_7] = ImGuiKey_7;
+	m_mapping[ITEM_ID_8] = ImGuiKey_8;
+	m_mapping[ITEM_ID_9] = ImGuiKey_9;
+	m_mapping[ITEM_ID_SPACE] = ImGuiKey_Space;
+	m_mapping[ITEM_ID_INSERT] = ImGuiKey_Insert;
 
 	// set key delay and repeat rates
 	io.KeyRepeatDelay = 0.400f;

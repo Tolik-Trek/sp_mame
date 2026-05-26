@@ -283,6 +283,19 @@ protected:
 
 	void poll_input_modules(bool relative_reset);
 
+	// user toggled "UI Release Pointer" - when set, forces the pointer to be released to the OS
+	bool m_pointer_released = false;
+	void toggle_pointer_release() { m_pointer_released = !m_pointer_released; }
+
+public:
+	// when true, the user freed the pointer to the OS - input modules suspend
+	// feeding mouse/keyboard to the emulated machine while this is set
+	bool pointer_released() const { return m_pointer_released; }
+	// re-capture the pointer (e.g. user clicked back in the window)
+	void recapture_pointer() { m_pointer_released = false; }
+
+protected:
+
 	static std::list<std::unique_ptr<osd_window> > s_window_list;
 
 private:

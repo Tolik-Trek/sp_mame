@@ -285,7 +285,15 @@ void sdl_window_info::update_cursor_state()
 	// the possibility of losing control
 	if (!(machine().debug_flags & DEBUG_FLAG_OSD_ENABLED))
 	{
-		bool should_hide_mouse = downcast<sdl_osd_interface&>(machine().osd()).should_hide_mouse();
+		auto &sdlosd = downcast<sdl_osd_interface&>(machine().osd());
+
+		// if the pointer was freed to the OS, re-capture when the user clicks back in the window
+		if (sdlosd.pointer_released()
+				&& (SDL_GetMouseFocus() == platform_window())
+				&& (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_LEFT)))
+			sdlosd.recapture_pointer();
+
+		bool should_hide_mouse = sdlosd.should_hide_mouse();
 
 		if (!fullscreen() && !should_hide_mouse)
 		{

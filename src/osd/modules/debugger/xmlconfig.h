@@ -23,6 +23,9 @@ WINDOW_TYPE_DEVICE_INFO_VIEWER
 
 extern char const *const NODE_WINDOW;
 extern char const *const NODE_COLORS;
+extern char const *const NODE_KEYMAP;
+
+extern char const *const NODE_KEYMAP_ITEM;
 
 extern char const *const NODE_WINDOW_SPLITS;
 extern char const *const NODE_WINDOW_SELECTION;
@@ -56,6 +59,10 @@ extern char const *const ATTR_WINDOW_POINTS_TYPE;
 extern char const *const ATTR_WINDOW_DEVICE_TAG;
 
 extern char const *const ATTR_COLORS_THEME;
+
+extern char const *const ATTR_KEYMAP_ACTION;
+extern char const *const ATTR_KEYMAP_KEY;
+extern char const *const ATTR_KEYMAP_MODIFIERS;
 
 extern char const *const ATTR_SPLITS_CONSOLE_STATE;
 extern char const *const ATTR_SPLITS_CONSOLE_DISASSEMBLY;

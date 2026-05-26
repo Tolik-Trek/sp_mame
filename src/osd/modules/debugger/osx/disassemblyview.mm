@@ -9,6 +9,8 @@
 #include "emu.h"
 #import "disassemblyview.h"
 
+#import "debugkeymap.h"
+
 #include "debug/debugvw.h"
 
 #include "util/xmlfile.h"
@@ -60,6 +62,7 @@
 
 
 - (void)addContextMenuItemsToMenu:(NSMenu *)menu {
+	MAMEDebugKeyMap *const keys = [MAMEDebugKeyMap sharedKeyMap];
 	NSMenuItem  *item;
 
 	[super addContextMenuItemsToMenu:menu];
@@ -69,38 +72,41 @@
 
 	item = [menu addItemWithTitle:@"Toggle Breakpoint"
 						   action:@selector(debugToggleBreakpoint:)
-					keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF9FunctionKey]];
-	[item setKeyEquivalentModifierMask:0];
+					keyEquivalent:@""];
+	[keys applyToMenuItem:item forAction:MAMEDebugActionToggleBreakpoint];
 
 	item = [menu addItemWithTitle:@"Disable Breakpoint"
 						   action:@selector(debugToggleBreakpointEnable:)
-					keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF9FunctionKey]];
-	[item setKeyEquivalentModifierMask:NSEventModifierFlagShift];
+					keyEquivalent:@""];
+	[keys applyToMenuItem:item forAction:MAMEDebugActionDisableBreakpoint];
 
 	[menu addItem:[NSMenuItem separatorItem]];
 
 	item = [menu addItemWithTitle:@"Run to Cursor"
 						   action:@selector(debugRunToCursor:)
-					keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF4FunctionKey]];
-	[item setKeyEquivalentModifierMask:0];
+					keyEquivalent:@""];
+	[keys applyToMenuItem:item forAction:MAMEDebugActionRunToCursor];
 
 	[menu addItem:[NSMenuItem separatorItem]];
 
 	item = [menu addItemWithTitle:@"Raw Opcodes"
 						   action:@selector(showRightColumn:)
-					keyEquivalent:@"r"];
+					keyEquivalent:@""];
+	[keys applyToMenuItem:item forAction:MAMEDebugActionShowRawOpcodes];
 	[item setTarget:self];
 	[item setTag:DASM_RIGHTCOL_RAW];
 
 	item = [menu addItemWithTitle:@"Encrypted Opcodes"
 						   action:@selector(showRightColumn:)
-					keyEquivalent:@"e"];
+					keyEquivalent:@""];
+	[keys applyToMenuItem:item forAction:MAMEDebugActionShowEncryptedOpcodes];
 	[item setTarget:self];
 	[item setTag:DASM_RIGHTCOL_ENCRYPTED];
 
 	item = [menu addItemWithTitle:@"Comments"
 						   action:@selector(showRightColumn:)
-					keyEquivalent:@"n"];
+					keyEquivalent:@""];
+	[keys applyToMenuItem:item forAction:MAMEDebugActionShowComments];
 	[item setTarget:self];
 	[item setTag:DASM_RIGHTCOL_COMMENTS];
 }
@@ -208,52 +214,57 @@
 
 
 - (void)insertActionItemsInMenu:(NSMenu *)menu atIndex:(NSInteger)index {
+	MAMEDebugKeyMap *const keys = [MAMEDebugKeyMap sharedKeyMap];
+
 	NSMenuItem *breakItem = [menu insertItemWithTitle:@"Toggle Breakpoint at Cursor"
 											   action:@selector(debugToggleBreakpoint:)
-										keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF9FunctionKey]
+										keyEquivalent:@""
 											  atIndex:index++];
-	[breakItem setKeyEquivalentModifierMask:0];
+	[keys applyToMenuItem:breakItem forAction:MAMEDebugActionToggleBreakpoint];
 
 	NSMenuItem *disableItem = [menu insertItemWithTitle:@"Disable Breakpoint at Cursor"
 												 action:@selector(debugToggleBreakpointEnable:)
-										  keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF9FunctionKey]
+										  keyEquivalent:@""
 												atIndex:index++];
-	[disableItem setKeyEquivalentModifierMask:NSEventModifierFlagShift];
+	[keys applyToMenuItem:disableItem forAction:MAMEDebugActionDisableBreakpoint];
 
 	NSMenu      *runMenu = [[menu itemWithTitle:@"Run"] submenu];
 	NSMenuItem  *runItem;
 	if (runMenu != nil) {
 		runItem = [runMenu addItemWithTitle:@"to Cursor"
 									 action:@selector(debugRunToCursor:)
-							  keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF4FunctionKey]];
+							  keyEquivalent:@""];
 	} else {
 		runItem = [menu insertItemWithTitle:@"Run to Cursor"
 									 action:@selector(debugRunToCursor:)
-							  keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF4FunctionKey]
+							  keyEquivalent:@""
 									atIndex:index++];
 	}
-	[runItem setKeyEquivalentModifierMask:0];
+	[keys applyToMenuItem:runItem forAction:MAMEDebugActionRunToCursor];
 
 	[menu insertItem:[NSMenuItem separatorItem] atIndex:index++];
 
 	NSMenuItem *rawItem = [menu insertItemWithTitle:@"Show Raw Opcodes"
 											 action:@selector(showRightColumn:)
-									  keyEquivalent:@"r"
+									  keyEquivalent:@""
 											atIndex:index++];
+	[keys applyToMenuItem:rawItem forAction:MAMEDebugActionShowRawOpcodes];
 	[rawItem setTarget:self];
 	[rawItem setTag:DASM_RIGHTCOL_RAW];
 
 	NSMenuItem *encItem = [menu insertItemWithTitle:@"Show Encrypted Opcodes"
 											 action:@selector(showRightColumn:)
-									  keyEquivalent:@"e"
+									  keyEquivalent:@""
 											atIndex:index++];
+	[keys applyToMenuItem:encItem forAction:MAMEDebugActionShowEncryptedOpcodes];
 	[encItem setTarget:self];
 	[encItem setTag:DASM_RIGHTCOL_ENCRYPTED];
 
 	NSMenuItem *commentsItem = [menu insertItemWithTitle:@"Show Comments"
 												  action:@selector(showRightColumn:)
-										   keyEquivalent:@"n"
+										   keyEquivalent:@""
 												 atIndex:index++];
+	[keys applyToMenuItem:commentsItem forAction:MAMEDebugActionShowComments];
 	[commentsItem setTarget:self];
 	[commentsItem setTag:DASM_RIGHTCOL_COMMENTS];
 

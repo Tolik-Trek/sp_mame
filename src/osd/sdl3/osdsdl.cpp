@@ -462,6 +462,10 @@ void sdl_osd_interface::release_keys()
 
 bool sdl_osd_interface::should_hide_mouse()
 {
+	// if the user toggled the pointer free, no
+	if (m_pointer_released)
+		return false;
+
 	// if we are paused, no
 	if (machine().paused())
 		return false;
@@ -860,6 +864,10 @@ void sdl_osd_interface::check_osd_inputs()
 
 	if (machine().ui_input().pressed(IPT_OSD_8))
 		window->renderer().record();
+
+	// toggle releasing the pointer back to the OS
+	if (machine().ui_input().pressed(IPT_UI_RELEASE_POINTER))
+		toggle_pointer_release();
 }
 
 

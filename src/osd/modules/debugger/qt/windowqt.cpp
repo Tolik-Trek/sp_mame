@@ -15,11 +15,77 @@
 
 #include "util/xmlfile.h"
 
+#include <QtWidgets/QDialog>
+#include <QtWidgets/QDialogButtonBox>
+#include <QtWidgets/QGridLayout>
+#include <QtWidgets/QKeySequenceEdit>
+#include <QtWidgets/QLabel>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QMenuBar>
+#include <QtWidgets/QPushButton>
+#include <QtWidgets/QScrollArea>
+#include <QtWidgets/QVBoxLayout>
+
+#include <vector>
 
 
 namespace osd::debugger::qt {
+
+namespace {
+
+// action identifiers (also used as keys in the configuration file)
+constexpr char const *ACT_NEW_MEMORY   = "new_memory";
+constexpr char const *ACT_NEW_DISASM   = "new_disasm";
+constexpr char const *ACT_NEW_LOG      = "new_log";
+constexpr char const *ACT_NEW_POINTS   = "new_points";
+constexpr char const *ACT_NEW_DEVICES  = "new_devices";
+constexpr char const *ACT_RUN          = "run";
+constexpr char const *ACT_RUN_AND_HIDE = "run_and_hide";
+constexpr char const *ACT_RUN_NEXT_CPU = "run_next_cpu";
+constexpr char const *ACT_RUN_NEXT_INT = "run_next_int";
+constexpr char const *ACT_RUN_VBLANK   = "run_vblank";
+constexpr char const *ACT_STEP_INTO    = "step_into";
+constexpr char const *ACT_STEP_OVER    = "step_over";
+constexpr char const *ACT_STEP_OUT     = "step_out";
+constexpr char const *ACT_SOFT_RESET   = "soft_reset";
+constexpr char const *ACT_HARD_RESET   = "hard_reset";
+constexpr char const *ACT_CLOSE_WINDOW = "close_window";
+constexpr char const *ACT_QUIT         = "quit";
+
+osd::debugger::key_shortcut make_sc(char const *key, bool ctrl, bool shift)
+{
+	osd::debugger::key_shortcut sc;
+	sc.key = key;
+	sc.ctrl = ctrl;
+	sc.shift = shift;
+	return sc;
+}
+
+} // anonymous namespace
+
+
+std::vector<osd::debugger::key_action> qtDefaultKeyActions()
+{
+	return {
+		{ ACT_NEW_MEMORY,   "New Memory Window",            "Windows",   make_sc("M", true,  false) },
+		{ ACT_NEW_DISASM,   "New Disassembly Window",       "Windows",   make_sc("D", true,  false) },
+		{ ACT_NEW_LOG,      "New Error Log Window",         "Windows",   make_sc("L", true,  false) },
+		{ ACT_NEW_POINTS,   "New (Break|Watch)points Window", "Windows", make_sc("B", true,  false) },
+		{ ACT_NEW_DEVICES,  "New Devices Window",           "Windows",   osd::debugger::key_shortcut() },
+		{ ACT_RUN,          "Run / Break",                  "Execution", make_sc("F5",  false, false) },
+		{ ACT_RUN_AND_HIDE, "Run and Hide Debugger",        "Execution", make_sc("F12", false, false) },
+		{ ACT_RUN_NEXT_CPU, "Run to Next CPU",              "Execution", make_sc("F6",  false, false) },
+		{ ACT_RUN_NEXT_INT, "Run to Next Interrupt",        "Execution", make_sc("F7",  false, false) },
+		{ ACT_RUN_VBLANK,   "Run to Next VBLANK",           "Execution", make_sc("F8",  false, false) },
+		{ ACT_STEP_INTO,    "Step Into",                    "Execution", make_sc("F11", false, false) },
+		{ ACT_STEP_OVER,    "Step Over",                    "Execution", make_sc("F10", false, false) },
+		{ ACT_STEP_OUT,     "Step Out",                     "Execution", make_sc("F11", false, true)  },
+		{ ACT_SOFT_RESET,   "Soft Reset",                   "Execution", make_sc("F3",  false, false) },
+		{ ACT_HARD_RESET,   "Hard Reset",                   "Execution", make_sc("F3",  false, true)  },
+		{ ACT_CLOSE_WINDOW, "Close Window",                 "Windows",   make_sc("W", true,  false) },
+		{ ACT_QUIT,         "Quit",                         "Windows",   make_sc("Q", true,  false) }
+	};
+}
 
 // Since all debug windows are intended to be top-level, this inherited
 // constructor is always called with a nullptr parent.  The passed-in parent widget,
@@ -38,74 +104,29 @@ WindowQt::WindowQt(DebuggerQt &debugger, QWidget *parent) :
 	connect(&debugger, &DebuggerQt::hideAllWindows, this, &WindowQt::hide);
 	connect(&debugger, &DebuggerQt::showAllWindows, this, &WindowQt::show);
 	connect(&debugger, &DebuggerQt::saveConfiguration, this, &WindowQt::saveConfiguration);
+	connect(&debugger, &DebuggerQt::keyBindingsChanged, this, &WindowQt::applyKeyBindings);
 
-	// The Debug menu bar
-	QAction *debugActOpenMemory = new QAction("New &Memory Window", this);
-	debugActOpenMemory->setShortcut(QKeySequence("Ctrl+M"));
-	connect(debugActOpenMemory, &QAction::triggered, this, &WindowQt::debugActOpenMemory);
+	// The Debug menu bar - shortcuts come from the remappable key map
+	QAction *debugActOpenMemory  = createKeyAction(ACT_NEW_MEMORY,   "New &Memory Window",              &WindowQt::debugActOpenMemory);
+	QAction *debugActOpenDasm    = createKeyAction(ACT_NEW_DISASM,   "New &Disassembly Window",         &WindowQt::debugActOpenDasm);
+	QAction *debugActOpenLog     = createKeyAction(ACT_NEW_LOG,      "New Error &Log Window",           &WindowQt::debugActOpenLog);
+	QAction *debugActOpenPoints  = createKeyAction(ACT_NEW_POINTS,   "New (&Break|Watch)points Window", &WindowQt::debugActOpenPoints);
+	QAction *debugActOpenDevices = createKeyAction(ACT_NEW_DEVICES,  "New D&evices Window",             &WindowQt::debugActOpenDevices);
+	QAction *dbgActRun           = createKeyAction(ACT_RUN,          "Run/Break",                       &WindowQt::debugActRun);
+	QAction *dbgActRunAndHide    = createKeyAction(ACT_RUN_AND_HIDE, "Run And Hide Debugger",           &WindowQt::debugActRunAndHide);
+	QAction *dbgActRunToNextCpu  = createKeyAction(ACT_RUN_NEXT_CPU, "Run to Next CPU",                 &WindowQt::debugActRunToNextCpu);
+	QAction *dbgActRunNextInt    = createKeyAction(ACT_RUN_NEXT_INT, "Run to Next Interrupt on This CPU", &WindowQt::debugActRunNextInt);
+	QAction *dbgActRunNextVBlank = createKeyAction(ACT_RUN_VBLANK,   "Run to Next VBlank",              &WindowQt::debugActRunNextVBlank);
+	QAction *dbgActStepInto      = createKeyAction(ACT_STEP_INTO,    "Step Into",                       &WindowQt::debugActStepInto);
+	QAction *dbgActStepOver      = createKeyAction(ACT_STEP_OVER,    "Step Over",                       &WindowQt::debugActStepOver);
+	QAction *dbgActStepOut       = createKeyAction(ACT_STEP_OUT,     "Step Out",                        &WindowQt::debugActStepOut);
+	QAction *dbgActSoftReset     = createKeyAction(ACT_SOFT_RESET,   "Soft Reset",                      &WindowQt::debugActSoftReset);
+	QAction *dbgActHardReset     = createKeyAction(ACT_HARD_RESET,   "Hard Reset",                      &WindowQt::debugActHardReset);
+	QAction *dbgActClose         = createKeyAction(ACT_CLOSE_WINDOW, "Close &Window",                   &WindowQt::debugActClose);
+	QAction *dbgActQuit          = createKeyAction(ACT_QUIT,         "&Quit",                           &WindowQt::debugActQuit);
 
-	QAction *debugActOpenDasm = new QAction("New &Disassembly Window", this);
-	debugActOpenDasm->setShortcut(QKeySequence("Ctrl+D"));
-	connect(debugActOpenDasm, &QAction::triggered, this, &WindowQt::debugActOpenDasm);
-
-	QAction *debugActOpenLog = new QAction("New Error &Log Window", this);
-	debugActOpenLog->setShortcut(QKeySequence("Ctrl+L"));
-	connect(debugActOpenLog, &QAction::triggered, this, &WindowQt::debugActOpenLog);
-
-	QAction *debugActOpenPoints = new QAction("New (&Break|Watch)points Window", this);
-	debugActOpenPoints->setShortcut(QKeySequence("Ctrl+B"));
-	connect(debugActOpenPoints, &QAction::triggered, this, &WindowQt::debugActOpenPoints);
-
-	QAction *debugActOpenDevices = new QAction("New D&evices Window", this);
-	connect(debugActOpenDevices, &QAction::triggered, this, &WindowQt::debugActOpenDevices);
-
-	QAction *dbgActRun = new QAction("Run", this);
-	dbgActRun->setShortcut(Qt::Key_F5);
-	connect(dbgActRun, &QAction::triggered, this, &WindowQt::debugActRun);
-
-	QAction *dbgActRunAndHide = new QAction("Run And Hide Debugger", this);
-	dbgActRunAndHide->setShortcut(Qt::Key_F12);
-	connect(dbgActRunAndHide, &QAction::triggered, this, &WindowQt::debugActRunAndHide);
-
-	QAction *dbgActRunToNextCpu = new QAction("Run to Next CPU", this);
-	dbgActRunToNextCpu->setShortcut(Qt::Key_F6);
-	connect(dbgActRunToNextCpu, &QAction::triggered, this, &WindowQt::debugActRunToNextCpu);
-
-	QAction *dbgActRunNextInt = new QAction("Run to Next Interrupt on This CPU", this);
-	dbgActRunNextInt->setShortcut(Qt::Key_F7);
-	connect(dbgActRunNextInt, &QAction::triggered, this, &WindowQt::debugActRunNextInt);
-
-	QAction *dbgActRunNextVBlank = new QAction("Run to Next VBlank", this);
-	dbgActRunNextVBlank->setShortcut(Qt::Key_F8);
-	connect(dbgActRunNextVBlank, &QAction::triggered, this, &WindowQt::debugActRunNextVBlank);
-
-	QAction *dbgActStepInto = new QAction("Step Into", this);
-	dbgActStepInto->setShortcut(Qt::Key_F11);
-	connect(dbgActStepInto, &QAction::triggered, this, &WindowQt::debugActStepInto);
-
-	QAction *dbgActStepOver = new QAction("Step Over", this);
-	dbgActStepOver->setShortcut(Qt::Key_F10);
-	connect(dbgActStepOver, &QAction::triggered, this, &WindowQt::debugActStepOver);
-
-	QAction *dbgActStepOut = new QAction("Step Out", this);
-	dbgActStepOut->setShortcut(QKeySequence("Shift+F11"));
-	connect(dbgActStepOut, &QAction::triggered, this, &WindowQt::debugActStepOut);
-
-	QAction *dbgActSoftReset = new QAction("Soft Reset", this);
-	dbgActSoftReset->setShortcut(Qt::Key_F3);
-	connect(dbgActSoftReset, &QAction::triggered, this, &WindowQt::debugActSoftReset);
-
-	QAction *dbgActHardReset = new QAction("Hard Reset", this);
-	dbgActHardReset->setShortcut(QKeySequence("Shift+F3"));
-	connect(dbgActHardReset, &QAction::triggered, this, &WindowQt::debugActHardReset);
-
-	QAction *dbgActClose = new QAction("Close &Window", this);
-	dbgActClose->setShortcut(QKeySequence::Close);
-	connect(dbgActClose, &QAction::triggered, this, &WindowQt::debugActClose);
-
-	QAction *dbgActQuit = new QAction("&Quit", this);
-	dbgActQuit->setShortcut(QKeySequence::Quit);
-	connect(dbgActQuit, &QAction::triggered, this, &WindowQt::debugActQuit);
+	QAction *dbgActCustomizeKeys = new QAction("Customize &Keys...", this);
+	connect(dbgActCustomizeKeys, &QAction::triggered, this, &WindowQt::debugActCustomizeKeys);
 
 	// Construct the menu
 	QMenu *debugMenu = menuBar()->addMenu("&Debug");
@@ -128,8 +149,27 @@ WindowQt::WindowQt(DebuggerQt &debugger, QWidget *parent) :
 	debugMenu->addAction(dbgActSoftReset);
 	debugMenu->addAction(dbgActHardReset);
 	debugMenu->addSeparator();
+	debugMenu->addAction(dbgActCustomizeKeys);
+	debugMenu->addSeparator();
 	debugMenu->addAction(dbgActClose);
 	debugMenu->addAction(dbgActQuit);
+}
+
+
+QAction *WindowQt::createKeyAction(char const *id, QString const &text, void (WindowQt::*slot)())
+{
+	QAction *const action = new QAction(text, this);
+	connect(action, &QAction::triggered, this, slot);
+	m_keyActions[id] = action;
+	action->setShortcut(QKeySequence(QString::fromStdString(m_debugger.keymap().shortcut(id).to_string())));
+	return action;
+}
+
+
+void WindowQt::applyKeyBindings()
+{
+	for (auto const &entry : m_keyActions)
+		entry.second->setShortcut(QKeySequence(QString::fromStdString(m_debugger.keymap().shortcut(entry.first).to_string())));
 }
 
 
@@ -248,6 +288,81 @@ void WindowQt::debugActClose()
 void WindowQt::debugActQuit()
 {
 	m_machine.schedule_exit();
+}
+
+void WindowQt::debugActCustomizeKeys()
+{
+	osd::debugger::keymap_config &keymap = m_debugger.keymap();
+
+	QDialog dialog(this);
+	dialog.setWindowTitle("Customize Debugger Keys");
+	dialog.resize(440, 480);
+
+	QVBoxLayout *const outer = new QVBoxLayout(&dialog);
+
+	QLabel *const hint = new QLabel(
+			"Click a field and press the desired key combination. Use Backspace to clear a binding.",
+			&dialog);
+	hint->setWordWrap(true);
+	outer->addWidget(hint);
+
+	QScrollArea *const scroll = new QScrollArea(&dialog);
+	scroll->setWidgetResizable(true);
+	QWidget *const content = new QWidget(scroll);
+	QGridLayout *const grid = new QGridLayout(content);
+
+	std::vector<std::pair<std::string, QKeySequenceEdit *> > edits;
+	int row = 0;
+	std::string group;
+	for (osd::debugger::key_action const &action : keymap.actions())
+	{
+		if (action.group != group)
+		{
+			group = action.group;
+			QLabel *const header = new QLabel(QString("<b>%1</b>").arg(QString::fromStdString(group)), content);
+			grid->addWidget(header, row++, 0, 1, 2);
+		}
+		QLabel *const label = new QLabel(QString::fromStdString(action.label), content);
+		QKeySequenceEdit *const edit = new QKeySequenceEdit(
+				QKeySequence(QString::fromStdString(keymap.shortcut(action.id).to_string())),
+				content);
+		grid->addWidget(label, row, 0);
+		grid->addWidget(edit, row, 1);
+		edits.emplace_back(action.id, edit);
+		++row;
+	}
+	scroll->setWidget(content);
+	outer->addWidget(scroll, 1);
+
+	QDialogButtonBox *const buttons = new QDialogButtonBox(
+			QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::RestoreDefaults,
+			&dialog);
+	outer->addWidget(buttons);
+	connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+	connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+	connect(buttons->button(QDialogButtonBox::RestoreDefaults), &QPushButton::clicked, &dialog,
+			[&edits, &keymap] ()
+			{
+				for (auto const &entry : edits)
+				{
+					keymap.reset(entry.first);
+					entry.second->setKeySequence(QKeySequence(QString::fromStdString(keymap.shortcut(entry.first).to_string())));
+				}
+			});
+
+	if (dialog.exec() == QDialog::Accepted)
+	{
+		for (auto const &entry : edits)
+		{
+			// keep only the first chord and store it in portable form
+			QString portable = entry.second->keySequence().toString(QKeySequence::PortableText);
+			int const comma = portable.indexOf(", ");
+			if (comma >= 0)
+				portable = portable.left(comma);
+			keymap.set_shortcut(entry.first, osd::debugger::key_shortcut::from_string(portable.toStdString()));
+		}
+		m_debugger.notifyKeyBindingsChanged();
+	}
 }
 
 void WindowQt::debuggerExit()

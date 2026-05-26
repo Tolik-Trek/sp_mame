@@ -87,9 +87,12 @@ DasmWindow::DasmWindow(DebuggerQt &debugger, QWidget *parent) :
 	m_breakpointToggleAct = new QAction("Toggle Breakpoint at Cursor", this);
 	m_breakpointEnableAct = new QAction("Disable Breakpoint at Cursor", this);
 	m_runToCursorAct = new QAction("Run to Cursor", this);
-	m_breakpointToggleAct->setShortcut(Qt::Key_F9);
-	m_breakpointEnableAct->setShortcut(0 | Qt::SHIFT | Qt::Key_F9); // zero because C++20 doesn't allow arithmetic between different enums
-	m_runToCursorAct->setShortcut(Qt::Key_F4);
+	//m_breakpointToggleAct->setShortcut(Qt::Key_F9);
+	m_breakpointToggleAct->setShortcut(Qt::CTRL | Qt::Key_F18);
+	//m_breakpointEnableAct->setShortcut(0 | Qt::SHIFT | Qt::Key_F9); // zero because C++20 doesn't allow arithmetic between different enums
+	m_breakpointEnableAct->setShortcut(0 | Qt::SHIFT | Qt::Key_F18); // zero because C++20 doesn't allow arithmetic between different enums
+	//m_runToCursorAct->setShortcut(Qt::Key_F4);
+	m_runToCursorAct->setShortcut(Qt::Key_F18);
 	connect(m_breakpointToggleAct, &QAction::triggered, this, &DasmWindow::toggleBreakpointAtCursor);
 	connect(m_breakpointEnableAct, &QAction::triggered, this, &DasmWindow::enableBreakpointAtCursor);
 	connect(m_runToCursorAct, &QAction::triggered, this, &DasmWindow::runToCursor);
@@ -109,9 +112,9 @@ DasmWindow::DasmWindow(DebuggerQt &debugger, QWidget *parent) :
 	rightActRaw->setActionGroup(rightBarGroup);
 	rightActEncrypted->setActionGroup(rightBarGroup);
 	rightActComments->setActionGroup(rightBarGroup);
-	rightActRaw->setShortcut(QKeySequence("Ctrl+R"));
-	rightActEncrypted->setShortcut(QKeySequence("Ctrl+E"));
-	rightActComments->setShortcut(QKeySequence("Ctrl+N"));
+	//rightActRaw->setShortcut(QKeySequence("Ctrl+R"));
+	//rightActEncrypted->setShortcut(QKeySequence("Ctrl+E"));
+	//rightActComments->setShortcut(QKeySequence("Ctrl+N"));
 	rightActRaw->setChecked(true);
 	connect(rightBarGroup, &QActionGroup::triggered, this, &DasmWindow::rightBarChanged);
 

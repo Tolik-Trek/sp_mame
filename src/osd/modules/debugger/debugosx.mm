@@ -27,6 +27,7 @@
 #include "debug_module.h"
 
 #import "osx/debugconsole.h"
+#import "osx/debugkeymap.h"
 #import "osx/debugwindowhandler.h"
 
 #include "util/xmlfile.h"
@@ -215,37 +216,50 @@ void debugger_osx::build_menus()
 		[editMenu addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
 		[editMenu addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
 
+		MAMEDebugKeyMap *const keys = [MAMEDebugKeyMap sharedKeyMap];
+
 		NSMenu *const debugMenu = [[NSMenu alloc] initWithTitle:@"Debug"];
 		item = [[NSApp mainMenu] insertItemWithTitle:@"Debug" action:NULL keyEquivalent:@"" atIndex:2];
 		[item setSubmenu:debugMenu];
 		[debugMenu release];
 
-		[debugMenu addItemWithTitle:@"New Memory Window"
-							 action:@selector(debugNewMemoryWindow:)
-					  keyEquivalent:@"d"];
-		[debugMenu addItemWithTitle:@"New Disassembly Window"
-							 action:@selector(debugNewDisassemblyWindow:)
-					  keyEquivalent:@"a"];
-		[debugMenu addItemWithTitle:@"New Error Log Window"
-							 action:@selector(debugNewErrorLogWindow:)
-					  keyEquivalent:@"l"];
-		[debugMenu addItemWithTitle:@"New (Break|Watch)points Window"
-							 action:@selector(debugNewPointsWindow:)
-					  keyEquivalent:@"b"];
-		[debugMenu addItemWithTitle:@"New Devices Window"
-							 action:@selector(debugNewDevicesWindow:)
-					  keyEquivalent:@"D"];
+		[keys applyToMenuItem:[debugMenu addItemWithTitle:@"New Memory Window"
+												  action:@selector(debugNewMemoryWindow:)
+										   keyEquivalent:@""]
+					forAction:MAMEDebugActionNewMemoryWindow];
+		[keys applyToMenuItem:[debugMenu addItemWithTitle:@"New Disassembly Window"
+												  action:@selector(debugNewDisassemblyWindow:)
+										   keyEquivalent:@""]
+					forAction:MAMEDebugActionNewDisassemblyWindow];
+		[keys applyToMenuItem:[debugMenu addItemWithTitle:@"New Error Log Window"
+												  action:@selector(debugNewErrorLogWindow:)
+										   keyEquivalent:@""]
+					forAction:MAMEDebugActionNewErrorLogWindow];
+		[keys applyToMenuItem:[debugMenu addItemWithTitle:@"New (Break|Watch)points Window"
+												  action:@selector(debugNewPointsWindow:)
+										   keyEquivalent:@""]
+					forAction:MAMEDebugActionNewPointsWindow];
+		[keys applyToMenuItem:[debugMenu addItemWithTitle:@"New Devices Window"
+												  action:@selector(debugNewDevicesWindow:)
+										   keyEquivalent:@""]
+					forAction:MAMEDebugActionNewDevicesWindow];
 
 		[debugMenu addItem:[NSMenuItem separatorItem]];
 
-		[[debugMenu addItemWithTitle:@"Soft Reset"
-							  action:@selector(debugSoftReset:)
-					   keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF3FunctionKey]]
-		 setKeyEquivalentModifierMask:0];
-		[[debugMenu addItemWithTitle:@"Hard Reset"
-							  action:@selector(debugHardReset:)
-					   keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF3FunctionKey]]
-		 setKeyEquivalentModifierMask:NSEventModifierFlagShift];
+		[keys applyToMenuItem:[debugMenu addItemWithTitle:@"Soft Reset"
+												  action:@selector(debugSoftReset:)
+										   keyEquivalent:@""]
+					forAction:MAMEDebugActionSoftReset];
+		[keys applyToMenuItem:[debugMenu addItemWithTitle:@"Hard Reset"
+												  action:@selector(debugHardReset:)
+										   keyEquivalent:@""]
+					forAction:MAMEDebugActionHardReset];
+
+		[debugMenu addItem:[NSMenuItem separatorItem]];
+
+		[debugMenu addItemWithTitle:@"Customize Keys…"
+							 action:@selector(showKeyBindings:)
+					  keyEquivalent:@""];
 
 		NSMenu *const runMenu = [[NSMenu alloc] initWithTitle:@"Run"];
 		item = [[NSApp mainMenu] insertItemWithTitle:@"Run"
@@ -255,51 +269,52 @@ void debugger_osx::build_menus()
 		[item setSubmenu:runMenu];
 		[runMenu release];
 
-		[runMenu addItemWithTitle:@"Break"
-						   action:@selector(debugBreak:)
-					keyEquivalent:@""];
+		[keys applyToMenuItem:[runMenu addItemWithTitle:@"Break"
+												action:@selector(debugBreak:)
+										 keyEquivalent:@""]
+					forAction:MAMEDebugActionBreak];
 
 		[runMenu addItem:[NSMenuItem separatorItem]];
 
-		[[runMenu addItemWithTitle:@"Run"
-							action:@selector(debugRun:)
-					 keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF5FunctionKey]]
-		 setKeyEquivalentModifierMask:0];
-		[[runMenu addItemWithTitle:@"Run and Hide Debugger"
-							action:@selector(debugRunAndHide:)
-					 keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF12FunctionKey]]
-		 setKeyEquivalentModifierMask:0];
-		[[runMenu addItemWithTitle:@"Run to Next CPU"
-							action:@selector(debugRunToNextCPU:)
-					 keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF6FunctionKey]]
-		 setKeyEquivalentModifierMask:0];
-		[[runMenu addItemWithTitle:@"Run until Next Interrupt on Current CPU"
-							action:@selector(debugRunToNextInterrupt:)
-					 keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF7FunctionKey]]
-		 setKeyEquivalentModifierMask:0];
-		[[runMenu addItemWithTitle:@"Run until Next VBLANK"
-							action:@selector(debugRunToNextVBLANK:)
-					 keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF8FunctionKey]]
-		 setKeyEquivalentModifierMask:0];
-		[[runMenu addItemWithTitle:@"Run to Cursor"
-							action:@selector(debugRunToCursor:)
-					 keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF4FunctionKey]]
-		 setKeyEquivalentModifierMask:0];
+		[keys applyToMenuItem:[runMenu addItemWithTitle:@"Run"
+												action:@selector(debugRun:)
+										 keyEquivalent:@""]
+					forAction:MAMEDebugActionRun];
+		[keys applyToMenuItem:[runMenu addItemWithTitle:@"Run and Hide Debugger"
+												action:@selector(debugRunAndHide:)
+										 keyEquivalent:@""]
+					forAction:MAMEDebugActionRunAndHide];
+		[keys applyToMenuItem:[runMenu addItemWithTitle:@"Run to Next CPU"
+												action:@selector(debugRunToNextCPU:)
+										 keyEquivalent:@""]
+					forAction:MAMEDebugActionRunToNextCPU];
+		[keys applyToMenuItem:[runMenu addItemWithTitle:@"Run until Next Interrupt on Current CPU"
+												action:@selector(debugRunToNextInterrupt:)
+										 keyEquivalent:@""]
+					forAction:MAMEDebugActionRunToNextInterrupt];
+		[keys applyToMenuItem:[runMenu addItemWithTitle:@"Run until Next VBLANK"
+												action:@selector(debugRunToNextVBLANK:)
+										 keyEquivalent:@""]
+					forAction:MAMEDebugActionRunToNextVBLANK];
+		[keys applyToMenuItem:[runMenu addItemWithTitle:@"Run to Cursor"
+												action:@selector(debugRunToCursor:)
+										 keyEquivalent:@""]
+					forAction:MAMEDebugActionRunToCursor];
 
 		[runMenu addItem:[NSMenuItem separatorItem]];
 
-		[[runMenu addItemWithTitle:@"Step Into"
-							action:@selector(debugStepInto:)
-					 keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF11FunctionKey]]
-		 setKeyEquivalentModifierMask:0];
-		[[runMenu addItemWithTitle:@"Step Over"
-							action:@selector(debugStepOver:)
-					 keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF10FunctionKey]]
-		 setKeyEquivalentModifierMask:0];
-		[[runMenu addItemWithTitle:@"Step Out"
-							action:@selector(debugStepOut:)
-					 keyEquivalent:[NSString stringWithFormat:@"%C", (short)NSF10FunctionKey]]
-		 setKeyEquivalentModifierMask:NSEventModifierFlagShift];
+		[keys applyToMenuItem:[runMenu addItemWithTitle:@"Step Into"
+												action:@selector(debugStepInto:)
+										 keyEquivalent:@""]
+					forAction:MAMEDebugActionStepInto];
+		[keys applyToMenuItem:[runMenu addItemWithTitle:@"Step Over"
+												action:@selector(debugStepOver:)
+										 keyEquivalent:@""]
+					forAction:MAMEDebugActionStepOver];
+		[keys applyToMenuItem:[runMenu addItemWithTitle:@"Step Out"
+												action:@selector(debugStepOut:)
+										 keyEquivalent:@""]
+					forAction:MAMEDebugActionStepOut];
 	}
 }
 
@@ -311,6 +326,19 @@ void debugger_osx::build_menus()
 
 void debugger_osx::config_load(config_type cfgtype, config_level cfglevel, util::xml::data_node const *parentnode)
 {
+	// keyboard shortcuts are global - they live in default.cfg
+	if ((config_type::DEFAULT == cfgtype) && parentnode)
+	{
+		util::xml::data_node const *const keymap = parentnode->get_child(osd::debugger::NODE_KEYMAP);
+		if (keymap)
+		{
+			NSAutoreleasePool *const pool = [[NSAutoreleasePool alloc] init];
+			[[MAMEDebugKeyMap sharedKeyMap] restoreConfigurationFromNode:keymap];
+			[pool release];
+		}
+		return;
+	}
+
 	if ((config_type::SYSTEM == cfgtype) && parentnode)
 	{
 		if (m_console)
@@ -335,6 +363,21 @@ void debugger_osx::config_load(config_type cfgtype, config_level cfglevel, util:
 
 void debugger_osx::config_save(config_type cfgtype, util::xml::data_node *parentnode)
 {
+	// keyboard shortcuts are global - they live in default.cfg
+	if (config_type::DEFAULT == cfgtype)
+	{
+		NSAutoreleasePool *const pool = [[NSAutoreleasePool alloc] init];
+		util::xml::data_node *const keymap = parentnode->add_child(osd::debugger::NODE_KEYMAP, nullptr);
+		if (keymap)
+		{
+			[[MAMEDebugKeyMap sharedKeyMap] saveConfigurationToNode:keymap];
+			if (!keymap->get_first_child())
+				keymap->delete_node();  // no overrides - don't clutter default.cfg
+		}
+		[pool release];
+		return;
+	}
+
 	if ((config_type::SYSTEM == cfgtype) && m_console)
 	{
 		NSAutoreleasePool *const pool = [[NSAutoreleasePool alloc] init];

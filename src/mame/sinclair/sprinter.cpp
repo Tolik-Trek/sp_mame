@@ -1496,15 +1496,11 @@ void sprinter_state::init_taps()
 	{
 		// Internal z84 ports are not accessible through IO map, hence they need special case here
 		// Keep these in ascending order
-		constexpr u8 z84_int[] = {
-			0x10, 0x11, 0x12, 0x13,
-			0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
-			0xee, 0xef,
-			0xf0, 0xf1, 0xf4
-		};
-		const auto found = std::lower_bound(std::begin(z84_int), std::end(z84_int), offset);
-		if ((found != std::end(z84_int)) && (*found == offset))
+		const u8 offset_8b =  (offset & 0x00ff);
+		// 0x10..0x13, 0x18..0x1F, 0xEE..0xF1, 0xF4
+		if ( (offset_8b == 0xf4) || ((offset_8b > 0x0f) && (offset_8b < 0x20) && ((offset_8b & 0x1c) != 0x14)) || ((offset_8b > 0xed) && (offset_8b < 0xf2)) ) {
 			dcp_w(offset, data);
+		}
 	});
 }
 

@@ -73,10 +73,14 @@ void DebuggerView::paintEvent(QPaintEvent *event)
 	QFontMetrics actualFont = fontMetrics();
 	double const fontWidth = actualFont.horizontalAdvance(QString(100, '_')) / 100.;
 	int const fontHeight = std::max(1, actualFont.lineSpacing());
-	int const contentWidth = width() - verticalScrollBar()->width();
+	// Use the scroll bars' size hints rather than their current width()/height():
+	// before the scroll area has laid out its scroll bars (i.e. on the very first
+	// paint) the bars still report the default QWidget size (100px), which would
+	// collapse contentWidth and hide the right-hand columns until a manual resize.
+	int const contentWidth = width() - verticalScrollBar()->sizeHint().width();
 	int const lineWidth = contentWidth / fontWidth;
 	bool const fullWidth = lineWidth >= m_view->total_size().x;
-	int const contentHeight = height() - (fullWidth ? 0 : horizontalScrollBar()->height());
+	int const contentHeight = height() - (fullWidth ? 0 : horizontalScrollBar()->sizeHint().height());
 	m_view->set_visible_size(debug_view_xy(lineWidth, contentHeight / fontHeight));
 
 	// Handle the scroll bars
@@ -126,7 +130,8 @@ void DebuggerView::paintEvent(QPaintEvent *event)
 				bgColor.setRgb(palette.color(QPalette::Base).rgb());
 
 			if (textAttr & DCA_SELECTED)
-				bgColor.setRgb(0xcb, 0x4b, 0x16);
+				//bgColor.setRgb(0xcb, 0x4b, 0x16);
+				bgColor.setRgb(0x30, 0x80, 0x80);
 
 			if (textAttr & DCA_CURRENT)
 				bgColor.setRgb(palette.color(QPalette::Highlight).rgb());

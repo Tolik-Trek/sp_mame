@@ -142,6 +142,10 @@ void windows_osd_interface::check_osd_inputs()
 	// check for taking fullscreen video
 	if (machine().ui_input().pressed(IPT_OSD_4))
 		winwindow_toggle_fsfx();
+
+	// toggle releasing the pointer back to the OS
+	if (machine().ui_input().pressed(IPT_UI_RELEASE_POINTER))
+		toggle_pointer_release();
 }
 
 

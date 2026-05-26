@@ -25,6 +25,10 @@
 
 bool windows_osd_interface::should_hide_mouse() const
 {
+	// if the user toggled the pointer free, no
+	if (m_pointer_released)
+		return false;
+
 	if (!winwindow_has_focus())
 		return false;
 

@@ -4,6 +4,7 @@
 #define MAME_DEBUGGER_QT_WINDOWQT_H
 
 #include "../xmlconfig.h"
+#include "../debugkeyconfig.h"
 
 #ifdef __aarch64__
 #include <arm_acle.h> // QtCore/qyieldcpu.h uses __yield() without #including this, causing an error
@@ -12,10 +13,17 @@
 #include <QtWidgets/QMainWindow>
 
 #include <deque>
+#include <map>
 #include <memory>
+#include <vector>
+
+class QAction;
 
 
 namespace osd::debugger::qt {
+
+// table of remappable actions with their default Qt shortcuts (defined in windowqt.cpp)
+std::vector<osd::debugger::key_action> qtDefaultKeyActions();
 
 //============================================================
 //  The Qt debugger module interface
@@ -29,13 +37,18 @@ public:
 
 	virtual running_machine &machine() const = 0;
 
+	// shared, remappable keyboard shortcut map
+	virtual osd::debugger::keymap_config &keymap() = 0;
+
 	void hideAll() { emit hideAllWindows(); }
+	void notifyKeyBindingsChanged() { emit keyBindingsChanged(); }
 
 signals:
 	void exitDebugger();
 	void hideAllWindows();
 	void showAllWindows();
 	void saveConfiguration(util::xml::data_node &parentnode);
+	void keyBindingsChanged();
 };
 
 
@@ -69,18 +82,24 @@ protected slots:
 	void debugActHardReset();
 	virtual void debugActClose();
 	void debugActQuit();
+	void debugActCustomizeKeys();
 	virtual void debuggerExit();
 
 private slots:
 	void saveConfiguration(util::xml::data_node &parentnode);
+	void applyKeyBindings();
 
 protected:
 	WindowQt(DebuggerQt &debugger, QWidget *parent = nullptr);
 
 	virtual void saveConfigurationToNode(util::xml::data_node &node);
 
+	// create a menu action whose shortcut is driven by the remappable key map
+	QAction *createKeyAction(char const *id, QString const &text, void (WindowQt::*slot)());
+
 	DebuggerQt &m_debugger;
 	running_machine &m_machine;
+	std::map<std::string, QAction *> m_keyActions;  // action id -> menu action, for live shortcut updates
 };
 
 

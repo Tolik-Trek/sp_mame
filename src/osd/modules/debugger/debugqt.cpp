@@ -61,7 +61,8 @@ public:
 		osd_module(OSD_DEBUG_PROVIDER, "qt"),
 		debug_module(),
 		m_machine(nullptr),
-		m_mainwindow(nullptr)
+		m_mainwindow(nullptr),
+		m_keymap(debugger::qt::qtDefaultKeyActions())
 	{
 	}
 
@@ -83,6 +84,8 @@ public:
 
 	virtual running_machine &machine() const override { return *m_machine; }
 
+	virtual osd::debugger::keymap_config &keymap() override { return m_keymap; }
+
 private:
 	void configuration_load(config_type which_type, config_level level, util::xml::data_node const *parentnode);
 	void configuration_save(config_type which_type, util::xml::data_node *parentnode);
@@ -91,6 +94,7 @@ private:
 	running_machine *m_machine;
 	debugger::qt::MainWindow *m_mainwindow;
 	util::xml::file::ptr m_config;
+	osd::debugger::keymap_config m_keymap;
 };
 
 
@@ -191,6 +195,13 @@ void debug_qt::debugger_update()
 
 void debug_qt::configuration_load(config_type which_type, config_level level, util::xml::data_node const *parentnode)
 {
+	// keyboard shortcuts are global - they live in default.cfg
+	if ((config_type::DEFAULT == which_type) && parentnode)
+	{
+		m_keymap.load(*parentnode);
+		return;
+	}
+
 	// We only care about system configuration files for now
 	if ((config_type::SYSTEM == which_type) && parentnode)
 	{
@@ -209,6 +220,13 @@ void debug_qt::configuration_load(config_type which_type, config_level level, ut
 
 void debug_qt::configuration_save(config_type which_type, util::xml::data_node *parentnode)
 {
+	// keyboard shortcuts are global - they live in default.cfg
+	if ((config_type::DEFAULT == which_type) && parentnode)
+	{
+		m_keymap.save(*parentnode);
+		return;
+	}
+
 	// We only save system configuration for now
 	if ((config_type::SYSTEM == which_type) && parentnode)
 		emit saveConfiguration(*parentnode);

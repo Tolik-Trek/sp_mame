@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import json; json.load\\(open\\('/Users/tolik/Documents/GitHub/mame/plugins/mamebridge/plugin.json'\\)\\); print\\('plugin.json: valid JSON'\\)\")",
+      "Bash(python3 -c \"import json,sys; json.load\\(open\\('.vscode/tasks.json'\\)\\); print\\('JSON OK'\\)\")",
+      "Bash(sysctl -n hw.ncpu)",
+      "Read(//Users/tolik/Documents/MAME/**)",
+      "Bash(claude mcp *)",
+      "Bash(python3 -c \"import mcp; print\\('mcp ok'\\)\")"
+    ],
+    "additionalDirectories": [
+      "/Users/tolik/Documents/GitHub/mame/plugins/mamebridge"
+    ]
+  }
+}

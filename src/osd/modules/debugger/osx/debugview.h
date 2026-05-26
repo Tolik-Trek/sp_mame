@@ -28,6 +28,8 @@
 	NSTextStorage   *text;
 	NSTextContainer *textContainer;
 	NSLayoutManager *layoutManager;
+
+	CGGlyph         glyphCache[256];  // monospaced glyph for each byte value (Core Text fast path)
 }
 
 + (NSFont *)defaultFontForMachine:(running_machine &)m;

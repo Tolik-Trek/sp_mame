@@ -7,6 +7,9 @@ namespace osd::debugger {
 
 char const *const NODE_WINDOW = "window";
 char const *const NODE_COLORS = "colors";
+char const *const NODE_KEYMAP = "keymap";
+
+char const *const NODE_KEYMAP_ITEM = "key";
 
 char const *const NODE_WINDOW_SPLITS = "splits";
 char const *const NODE_WINDOW_SELECTION = "selection";
@@ -40,6 +43,10 @@ char const *const ATTR_WINDOW_POINTS_TYPE = "bwtype";
 char const *const ATTR_WINDOW_DEVICE_TAG = "device-tag";
 
 char const *const ATTR_COLORS_THEME = "theme";
+
+char const *const ATTR_KEYMAP_ACTION = "action";
+char const *const ATTR_KEYMAP_KEY = "char";
+char const *const ATTR_KEYMAP_MODIFIERS = "modifiers";
 
 char const *const ATTR_SPLITS_CONSOLE_STATE = "state";
 char const *const ATTR_SPLITS_CONSOLE_DISASSEMBLY = "disassembly";

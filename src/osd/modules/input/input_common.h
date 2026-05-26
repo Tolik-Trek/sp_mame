@@ -331,6 +331,12 @@ protected:
 
 	virtual bool should_poll_devices()
 	{
+		// when the user freed the pointer to the OS (UI Release Pointer), stop
+		// feeding input to the emulated machine; poll() then resets the devices
+		// each frame, so nothing sticks and no events back up
+		if (osd().pointer_released())
+			return false;
+
 		return background_input() || osd().has_focus();
 	}
 
