@@ -208,6 +208,17 @@ ROM_START( microsoft_natural )
 
 	ROM_SYSTEM_BIOS(1, "sp2k", "Sprinter 2k Fix")
 	ROMX_LOAD("natural-sp2k.bin", 0x0000, 0x1000, CRC(16c21ab2) SHA1(72c6ebe8fd88a81a6c9622ff968ad2d0eb04a629), ROM_BIOS(1))
+
+	// As sp2k, but the local Num Lock toggle (xrl 0x20,#0x01 at ROM 0x240) is NOP'd
+	// out. On the Sprinter the host can never drive the keyboard (SIO transmitter
+	// off, no out_txda wiring), so the keyboard's internal Num Lock latch (RAM bit
+	// 0x20.0) is changed only by this local toggle on the Num Lock key. Bit 0x20.0
+	// gates the "fake shift" inserted before the gray cursor/editing keys (jump
+	// table at ROM 0x310; index 1 = numlock-on/no-shift -> 0x31e). Neutralising the
+	// toggle keeps that latch at its power-on 0, so the dedicated arrows always send
+	// clean E0-prefixed codes even after Num Lock is pressed.
+	ROM_SYSTEM_BIOS(2, "sp2knl", "Sprinter 2k Fix + Num Lock fake-shift fix")
+	ROMX_LOAD("natural-sp2k-nlfix.bin", 0x0000, 0x1000, CRC(51312438) SHA1(c3b4aa9bfcab29714d6e9ca9e2f692a145af99bd), ROM_BIOS(2))
 ROM_END
 
 
