@@ -9,7 +9,7 @@ class specnext_layer2_device : public device_t, public device_gfx_interface
 {
 
 public:
-	specnext_layer2_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock);
+	specnext_layer2_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock = 0);
 
 	specnext_layer2_device &set_host_ram_ptr(const u8 *host_ram_ptr) { m_host_ram_ptr = host_ram_ptr; return *this; }
 	specnext_layer2_device &set_palette(const char *tag, u16 base_offset, u16 alt_offset);
@@ -47,8 +47,7 @@ protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
 
-	u8 m_pixel_latch;
-	u32 m_pixel_latch_off;
+	u16 m_pixel_latch_idx;
 
 private:
 	template <typename FunctionClass> void draw_256(screen_device &screen, bitmap_rgb32 &bitmap, bitmap_rgb32 &blendprio, const rectangle &cliprect, FunctionClass blend_op);
