@@ -630,6 +630,11 @@ function mamebridge.startplugin()
 	    elseif verb == "hold"   then return do_hold(words[2], parse_addr(words[3]))
 	    elseif verb == "release" then return do_release(words[2], parse_addr(words[3]))
 	    elseif verb == "analog" then return do_analog(words[2], parse_addr(words[3]), tonumber(words[4]), tonumber(words[5] or "0"))
+	    elseif verb == "quit" or verb == "exit" then
+	      -- Clean shutdown: the debugger console 'exit' command schedules a normal
+	      -- MAME exit (breaks the hard-stop loop, tears down properly). Always stop
+	      -- the emulator this way over MCP — never kill the process.
+	      run_cmd("exit"); return "exiting MAME"
 	    elseif verb == "cmd"    then return run_cmd(line:match("^cmd%s+(.+)$") or "")
 	    else return "ERROR: unknown command '" .. tostring(verb) .. "'" end
 	  end)

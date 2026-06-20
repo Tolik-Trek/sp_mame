@@ -189,6 +189,15 @@ def status() -> str:
 
 
 @mcp.tool()
+def quit_emulator() -> str:
+    """Cleanly shut down the running MAME emulator (debugger console 'exit').
+    ALWAYS stop MAME this way — never kill the process. The reply may be empty or
+    time out because MAME exits immediately afterwards; that is expected and means
+    the shutdown succeeded."""
+    return _rpc("quit")
+
+
+@mcp.tool()
 def disassemble(address: str, num_bytes: int = 32) -> str:
     """Disassemble `num_bytes` bytes starting at `address`."""
     return _rpc(f"dasm {address} {num_bytes}")

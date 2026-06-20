@@ -5,6 +5,46 @@ Drive the MAME debugger from Claude (in VS Code) to test Z80/8080 code written
 to run inside an emulated retro computer. Claude should be able to inspect/modify
 registers and memory, set breakpoints/watchpoints, single-step, and disassemble.
 
+## Platform & paths (READ FIRST — this same checkout runs on macOS *and* Windows)
+This doc was first written on macOS; the live host can be either OS, and the repo
+root, the bridge-file locations, the plugin dir, the IPC/snap dirs and the debugger
+backend all differ. Detect the host (`C:\…` vs `/Users/…`) and use the matching
+column. **Absolute paths elsewhere in this file are the macOS ones unless a Windows
+equivalent is given inline.**
+
+| thing | macOS | Windows (current host) |
+|---|---|---|
+| repo / git root | `/Users/tolik/Documents/GitHub/mame` | `C:\tools\msys64\src\MAME` |
+| bridge sources (`mame_mcp.py`, `mame_bridge.lua`) | `<repo>/src/` | `C:\tools\msys64\src\MAME\src\` |
+| this file | `<repo>/src/CLAUDE.md` | `C:\tools\msys64\src\MAME\src\CLAUDE.md` |
+| built emulator | `<repo>/mame` | `C:\tools\msys64\src\MAME\mame.exe` (native win32) |
+| run dir (CWD at launch) | `~/Documents/MAME` | `C:\tools\Progs\MAME` |
+| run-copy of emulator | runs from `~/Documents/MAME` | `C:\tools\Progs\MAME\mame.exe` (copied there by the "Install MAME" VSCode task) |
+| launcher | `~/Documents/MAME/Debug.sh` / `No_Debug.sh` | `C:\tools\Progs\MAME\Debug.bat` / `no_debug.bat` |
+| `mamebridge` pluginspath | `~/Documents/MAME/plugins` → symlink → `<repo>/plugins` | `C:\tools\msys64\src\MAME\plugins` (REAL dir; the run dir has NO `plugins` symlink → must pass `-pluginspath`) |
+| `MAME_MCP_DIR` (IPC) | `/tmp/mame_mcp` default OK | SET EXPLICITLY — the `/tmp` default is drive-relative on the native build |
+| `MAME_MCP_SNAP_DIR` | `/tmp/mame_snap` (cleared on reboot) | SET EXPLICITLY — not auto-cleared |
+| `-debugger auto` resolves to | Cocoa `debugosx` | native Win32 debugger |
+| build | `mame.sh` (clang/gcc) | MSYS2 UCRT64 login-shell, targets `windows_x64`(gcc)/`windows_x64_clang`(clang); see `.vscode/tasks.json` |
+
+Windows specifics that bite:
+- `-plugin mamebridge` and `MAME_MCP_*` are for CLAUDE-driven testing only. DO NOT
+  add them to the user's launchers (`Debug.bat` / `no_debug.bat`) — those stay clean
+  for the user. Launch the emulator for testing via the **Claude-owned launcher**
+  `C:\tools\msys64\src\MAME\src\run_mame_bridge.bat`: it runs the repo-built
+  `mame.exe`, loads `mamebridge` from the repo `plugins` dir, and points
+  `MAME_MCP_DIR` / `MAME_MCP_SNAP_DIR` at `<repo>\.mame_mcp\{ipc,snap}` (gitignored).
+  Register the MCP server with the SAME `MAME_MCP_DIR`:
+  `claude mcp add mame-z80 --env MAME_MCP_DIR=C:\tools\msys64\src\MAME\.mame_mcp\ipc -- python C:\tools\msys64\src\MAME\src\mame_mcp.py`
+- The bridge and the Python server must resolve the **same physical** `MAME_MCP_DIR`.
+  Both default to `/tmp/...`; under a native win32 MAME that is drive-relative and may
+  not match the Python side, so always pass an explicit Windows path on Windows.
+- Path B's stop/step loop is VERIFIED on macOS (Cocoa) AND on the native Windows
+  debugger (2026-06-20, via `run_mame_bridge.bat` with `-debugger auto`:
+  `regs`/`status`/`step`/`dasm` all answer over file-IPC while the machine is
+  hard-stopped; `step` advanced PC 0x0→0x1→0x4 at boot, env propagated, IPC dir
+  matched).
+
 ## Two integration paths (decided in prior session)
 
 ### Path A — MAME built-in GDB stub  (`-debugger gdbstub`)
@@ -45,13 +85,26 @@ switching, so it's unsuitable here.)
   live inspection only; goes silent when the debugger hard-stops.
 - `mame_mcp.py` — FastMCP server (`pip install "mcp[cli]"`). Talks to the bridge.
   Unchanged between the two — the file-IPC protocol is identical.
+- `run_mame_bridge.bat` (in `src/`, Windows) — **Claude-owned launcher**: starts the
+  repo-built `mame.exe` with `-plugin mamebridge` and Claude-owned `MAME_MCP_*`. Use
+  THIS to launch the emulator for testing; never put the bridge into the user's
+  `Debug.bat` / `no_debug.bat`. (macOS: make an analogous Claude-owned copy of
+  `Debug.sh` rather than editing the user's.)
 
 ## Run (Path B)
 ```
 mame <system> -debug -plugin mamebridge
 claude mcp add mame-z80 -- python ./mame_mcp.py
 ```
-**Debugger-agnostic — VERIFIED under the native macOS Cocoa debugger.** The bridge
+On Windows do NOT run a bare command and do NOT touch the user's launchers — use the
+Claude-owned launcher, then register the MCP server with the matching `MAME_MCP_DIR`:
+```
+src\run_mame_bridge.bat
+claude mcp add mame-z80 --env MAME_MCP_DIR=C:\tools\msys64\src\MAME\.mame_mcp\ipc -- python C:\tools\msys64\src\MAME\src\mame_mcp.py
+```
+**Debugger-agnostic — VERIFIED under the native macOS Cocoa debugger AND the native
+Windows debugger** (on Windows `-debugger auto` = the Win32 debugger; the stop/step
+loop was verified live there on 2026-06-20 — see **Platform & paths**)**.** The bridge
 pump (`emu.register_periodic`) is driven by `emulator_info::periodic_check()` in the
 core `while (is_stopped())` loop (debugcpu.cpp:446), which runs *before*
 `wait_for_debugger` for ANY OSD debugger module. So it works the same with
@@ -61,26 +114,38 @@ incl. the critical stop/step loop responding with no timeout while hard-stopped.
 (Earlier the Cocoa debugger could starve the pump because its `drawRect` used
 NSLayoutManager ~1.7s/redraw on the same main thread; that view is now Core-Text-
 based, so the starvation is gone.)
-If MAME can't find the plugin, add the repo plugins dir explicitly:
-`-pluginspath /Users/tolik/Documents/GitHub/mame/plugins`.
-Env (must match on both sides):
-- `MAME_MCP_DIR`  IPC dir (default /tmp/mame_mcp)
+If MAME can't find the plugin, add the plugins dir explicitly (path is OS-specific —
+see **Platform & paths**): macOS `-pluginspath /Users/tolik/Documents/GitHub/mame/plugins`;
+Windows `-pluginspath C:\tools\msys64\src\MAME\plugins` (required there — the run dir
+`C:\tools\Progs\MAME` has no `plugins` symlink).
+Env (must match on both sides — bridge and Python server must resolve the **same
+physical directory**):
+- `MAME_MCP_DIR`  IPC dir (default `/tmp/mame_mcp` — OK on macOS; on Windows the
+  `/tmp` default is drive-relative under the native build, so SET IT EXPLICITLY to a
+  concrete path both sides see, e.g. `C:\tools\Progs\MAME\mcp`)
 - `MAME_MCP_CPU`  CPU tag (default :maincpu)
-- `MAME_MCP_SNAP_DIR` screenshot dir (default /tmp/mame_snap, cleared on reboot)
+- `MAME_MCP_SNAP_DIR` screenshot dir (default `/tmp/mame_snap`, cleared on reboot on
+  macOS; on Windows set explicitly — NOT auto-cleared)
 - `MAME_MCP_TIMEOUT` reply wait seconds (Python side, default 10)
 
 ## MCP tools exposed
 read_registers, read_memory, read_logical_memory, read_vram, read_share,
 list_shares, write_memory, set_breakpoint (with optional condition expr),
 clear_breakpoint, list_breakpoints, set_watchpoint, clear_watchpoint, step,
-step_over, step_out, resume, pause, status, disassemble, screenshot,
+step_over, step_out, resume, pause, status, quit_emulator, disassemble, screenshot,
 list_ports, press_key, type_text, move_mouse, click_mouse, press_input,
 set_input, debugger_command (raw console-command escape hatch).
+**Shutdown:** ALWAYS stop MAME with `quit_emulator` (bridge verb `quit`/`exit` →
+debugger console `exit`, a clean teardown that also breaks the hard-stop loop) —
+NEVER kill the process (no `taskkill`/`kill`). The reply may be empty or time out
+because MAME exits immediately after; that means success. Verified 2026-06-20:
+`quit` over file-IPC exited mame.exe in ~1 s and the launcher returned exit code 0.
 Address args accept "0xC000", bare hex "C000", or decimal "49152" (the plugin's
 `parse_addr` normalises all three).
 `screenshot` (bridge cmd `snap`) saves a PNG of the active screen and returns its
 path; open that path to view the screen. Snaps go to `MAME_MCP_SNAP_DIR`
-(default `/tmp/mame_snap`, cleared on reboot). The image is the last drawn frame,
+(default `/tmp/mame_snap`, cleared on reboot on macOS; on Windows set it explicitly —
+see **Platform & paths**). The image is the last drawn frame,
 so while hard-stopped resume briefly before snapping for a fresh frame.
 
 ## Reading the screen for mouse navigation (scrpix) — what works & what's hard
@@ -183,11 +248,20 @@ mouse motion to BOTH mice, so `press_key`/`move_mouse`/`click_mouse` drive both:
 the firmware UI prefer `press_key`. Use `list_ports` to rediscover tags/masks.
 
 ## Environment gotchas (verified on the sprinter machine)
-- `plugins/` here is symlinked from `~/Documents/MAME/plugins`, which is the
+- Plugin location is OS-specific (see **Platform & paths**). macOS: `plugins/` is
+  reached via the symlink `~/Documents/MAME/plugins → <repo>/plugins`, which is the
   active `pluginspath`, so editing the repo files updates the running plugin.
-- Run with the real config (see `~/Documents/MAME/Debug.sh`): `-bios dev` plus the
-  disk/floppy images. Without `-bios dev` the default `sp2k` BIOS ROM is missing
-  and the machine refuses to start.
+  Windows: `plugins/` is a REAL directory in the repo
+  (`C:\tools\msys64\src\MAME\plugins`); the run dir `C:\tools\Progs\MAME` has no
+  `plugins` symlink, so pass `-pluginspath C:\tools\msys64\src\MAME\plugins` to load
+  `mamebridge` (editing the repo file still updates the running plugin, since that IS
+  the path being loaded).
+- Run with the real config: `-bios dev` plus the disk/floppy images. Without
+  `-bios dev` the default `sp2k` BIOS ROM is missing and the machine refuses to
+  start. User launchers (keep CLEAN — no bridge): macOS `~/Documents/MAME/Debug.sh`,
+  Windows `C:\tools\Progs\MAME\Debug.bat` / `no_debug.bat`. For Claude-driven Path B
+  testing launch the Claude-owned `src/run_mame_bridge.bat` instead (see
+  **Platform & paths**).
 - The `portname` plugin used the removed `emu.register_start`; it now uses
   `emu.add_machine_reset_notifier`. If it ever crashes the boot again with
   "attempt to call a nil value", that's the regression to look at (or just run
