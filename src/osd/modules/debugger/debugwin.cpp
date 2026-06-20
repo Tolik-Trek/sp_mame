@@ -85,7 +85,8 @@ public:
 		m_config(),
 		m_save_windows(true),
 		m_group_windows(true),
-		m_group_windows_setting(true)
+		m_group_windows_setting(true),
+		m_release_pointer_was_pressed(false)
 	{
 	}
 
@@ -145,6 +146,7 @@ private:
 	bool m_save_windows;
 	bool m_group_windows;
 	bool m_group_windows_setting;
+	bool m_release_pointer_was_pressed; // edge state for the UI Release Pointer hotkey while stopped
 
 	win_timer m_min_periodic_timer;
 };
@@ -239,6 +241,19 @@ void debugger_windows::wait_for_debugger(device_t &device, bool firststop)
 
 	// run input polling to ensure that our status is in sync
 	downcast<windows_osd_interface&>(machine().osd()).poll_input_modules(false);
+
+	// While the emulation is hard-stopped in the debugger the normal per-frame cursor
+	// update and UI input poll (windows_osd_interface::check_osd_inputs) don't run, so
+	// a pointer the game window grabbed could not be freed and the "UI Release Pointer"
+	// hotkey was dead.  Reproduce both here on every iteration so the pointer behaves
+	// exactly as it does while running.  ui_input().pressed() is unreliable while the
+	// machine is stopped (its per-frame state isn't updated), so test the input
+	// sequence directly and edge-detect it to toggle the release.
+	bool const release_pointer_pressed = machine().ioport().type_pressed(IPT_UI_RELEASE_POINTER);
+	if (release_pointer_pressed && !m_release_pointer_was_pressed)
+		downcast<windows_osd_interface &>(machine().osd()).toggle_pointer_release();
+	m_release_pointer_was_pressed = release_pointer_pressed;
+	winwindow_update_cursor_state(*m_machine);
 
 	// get and process messages
 	MSG message;

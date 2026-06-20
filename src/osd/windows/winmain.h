@@ -106,6 +106,7 @@ public:
 	int window_count();
 
 	using osd_common_t::poll_input_modules; // Win32 debugger calls this directly, which it shouldn't
+	using osd_common_t::toggle_pointer_release; // Win32 debugger polls the UI Release Pointer hotkey while stopped
 
 private:
 	void process_events(bool ingame, bool nodispatch);
